@@ -1380,8 +1380,6 @@ static void setupBindingFromConfig()
   {
 #ifdef PLATFORM_ESP32
     esp_read_mac(UID, ESP_MAC_WIFI_STA);
-    memcpy(UID, uid, UID_LEN);
-
 #elif PLATFORM_STM32
     UID[0] = (uint8_t)HAL_GetUIDw0();
     UID[1] = (uint8_t)(HAL_GetUIDw0() >> 8);
