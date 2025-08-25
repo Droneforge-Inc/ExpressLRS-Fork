@@ -52,9 +52,9 @@ static const int32_t OpenTXsyncPacketInterval = 200; // in ms
 static const int32_t OpenTXsyncOffsetSafeMargin = 1000; // 100us
 
 /// UART Handling ///
-static const int32_t TxToHandsetBauds[] = {400000, 115200, 5250000, 3750000, 1870000, 921600, 2250000};
-uint8_t CRSFHandset::UARTcurrentBaudIdx = 6;   // only used for baud-cycling, initialized to the end so the next one we try is the first in the list
-uint32_t CRSFHandset::UARTrequestedBaud = 5250000;
+static const int32_t TxToHandsetBauds[] = {115200};
+uint8_t CRSFHandset::UARTcurrentBaudIdx = 0;   // only used for baud-cycling, initialized to the end so the next one we try is the first in the list
+uint32_t CRSFHandset::UARTrequestedBaud = 115200;
 
 // for the UART wdt, every 1000ms we change bauds when connect is lost
 static const int UARTwdtInterval = 1000;

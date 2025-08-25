@@ -1338,6 +1338,11 @@ static void setupTarget()
     pinMode(GPIO_PIN_ANT_CTRL_COMPL, OUTPUT);
     digitalWrite(GPIO_PIN_ANT_CTRL_COMPL, !diversityAntennaState);
   }
+  if (GPIO_PIN_TCXO_EN != UNDEF_PIN)
+  {
+    pinMode(GPIO_PIN_TCXO_EN, OUTPUT);
+    digitalWrite(GPIO_PIN_TCXO_EN, HIGH);
+  }
 
   setupSerial();
   setupTargetCommon();
@@ -1374,7 +1379,10 @@ static void setupBindingFromConfig()
   else
   {
 #ifdef PLATFORM_ESP32
-    esp_read_mac(UID, ESP_MAC_WIFI_STA);
+    // esp_read_mac(UID, ESP_MAC_WIFI_STA);
+    uint8_t     uid[6] = {171,139,231,84,67,134};
+    memcpy(UID, uid, UID_LEN);
+
 #elif PLATFORM_STM32
     UID[0] = (uint8_t)HAL_GetUIDw0();
     UID[1] = (uint8_t)(HAL_GetUIDw0() >> 8);
@@ -1487,6 +1495,7 @@ void setup()
 #endif
 
   devicesStart();
+  hwTimer::resume();
 
   if (firmwareOptions.is_airport)
   {

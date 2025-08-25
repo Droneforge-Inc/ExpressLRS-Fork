@@ -22,6 +22,7 @@ typedef enum {
     HARDWARE_radio_rst,
     HARDWARE_radio_rst_2,
     HARDWARE_radio_sck,
+    HARDWARE_radio_tcxo_en,
     HARDWARE_radio_dcdc,
     HARDWARE_radio_rfo_hf,
     HARDWARE_radio_rfsw_ctrl,

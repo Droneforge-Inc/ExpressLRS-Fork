@@ -122,6 +122,9 @@
 #ifndef GPIO_PIN_DIO2
 #define GPIO_PIN_DIO2 UNDEF_PIN
 #endif
+#ifndef GPIO_PIN_TCXO_EN
+#define GPIO_PIN_TCXO_EN UNDEF_PIN
+#endif
 #ifndef GPIO_PIN_PA_ENABLE
 #define GPIO_PIN_PA_ENABLE UNDEF_PIN
 #endif
