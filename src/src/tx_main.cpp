@@ -1379,8 +1379,7 @@ static void setupBindingFromConfig()
   else
   {
 #ifdef PLATFORM_ESP32
-    // esp_read_mac(UID, ESP_MAC_WIFI_STA);
-    uint8_t     uid[6] = {171,139,231,84,67,134};
+    esp_read_mac(UID, ESP_MAC_WIFI_STA);
     memcpy(UID, uid, UID_LEN);
 
 #elif PLATFORM_STM32
