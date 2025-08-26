@@ -1,3 +1,24 @@
+## Purpose
+This repo is a fork of the [official ExpressLRS](https://github.com/ExpressLRS/ExpressLRS) repository. We maintain this fork so that we can customize the ELRS firmware and build the binary for Nimbus.
+
+## Requirements
+- [Platform IO](https://platformio.org/) for building and flashing
+    - Run `python3 -m pip install --user platformio` to install
+
+## Flashing Nimbus
+The Nimbus hardware for ELRS includes an ESP32 S3 and a LoRa1280-TCXO radio module. Custom pins specifications for this setup are included in this [file](src/hardware/TX/DIY%20S3%20Nimbus.json).
+
+Foolow these steps to build and upload the binary to Nimbus:
+1. Plug Nimbus into you computer via USB-C
+2. Run this command in a terminal: `pio run -e Unified_ESP32S3_2400_TX_via_UART --target upload`
+3. When prompted, select the correct hardware configuration: `DIY ESP32-S3 Nimbus 2.4Ghz TX`
+
+If the command succeeds, Nimbus should now be flashed with the correct firmware.
+
+-----
+
+The following is a copy of the official ExpressLRS README:
+
 ![Banner](https://github.com/ExpressLRS/ExpressLRS-Hardware/blob/master/img/banner.png?raw=true)
 
 <center>
