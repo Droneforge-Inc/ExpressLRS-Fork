@@ -67,6 +67,14 @@ void CRSFHandset::Begin()
 
     halfDuplex = (GPIO_PIN_RCSIGNAL_TX == GPIO_PIN_RCSIGNAL_RX);
 
+#if defined(PLATFORM_ESP32_S3)
+    USBSerial.begin(UARTrequestedBaud);
+    USBSerial.setRxBufferSize(16384);
+    USBSerial.setTxBufferSize(1024);
+    CRSFHandset::PortSecondary = &USBSerial;
+    CRSFHandset::PortSecondary->setTimeout(0);
+#endif
+
 #if defined(PLATFORM_ESP32)
     portDISABLE_INTERRUPTS();
     UARTinverted = halfDuplex; // on a full UART we will start uninverted checking first
@@ -147,6 +155,13 @@ void CRSFHandset::flush_port_input()
     {
         CRSFHandset::Port.read();
     }
+
+#ifdef PLATFORM_ESP32_S3
+    while (CRSFHandset::PortSecondary->available())
+    {
+        CRSFHandset::PortSecondary->read();
+    }
+#endif
 }
 
 void CRSFHandset::makeLinkStatisticsPacket(uint8_t *buffer)
@@ -455,9 +470,15 @@ void CRSFHandset::handleInput()
     }
 
     // Add new data, and then discard bytes until we start with header byte
+#if defined(PLATFORM_ESP32_S3)
+    auto toRead = std::min(CRSFHandset::PortSecondary->available(), CRSF_MAX_PACKET_LEN - SerialInPacketPtr);
+    SerialInPacketPtr += CRSFHandset::PortSecondary->readBytes(&SerialInBuffer[SerialInPacketPtr], toRead);
+    alignBufferToSync(0);
+#else
     auto toRead = std::min(CRSFHandset::Port.available(), CRSF_MAX_PACKET_LEN - SerialInPacketPtr);
     SerialInPacketPtr += CRSFHandset::Port.readBytes(&SerialInBuffer[SerialInPacketPtr], toRead);
     alignBufferToSync(0);
+#endif
 
     // Make sure we have at least a packet header and a length byte
     if (SerialInPacketPtr < 3)
@@ -472,7 +493,7 @@ void CRSFHandset::handleInput()
         return;
     }
 
-    // Only proceed one there are enough bytes in the buffer for the entire packet
+    // Only proceed once there are enough bytes in the buffer for the entire packet
     if (SerialInPacketPtr < totalLen)
         return;
 

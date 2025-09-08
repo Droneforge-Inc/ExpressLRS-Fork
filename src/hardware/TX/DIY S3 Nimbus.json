@@ -1,6 +1,6 @@
 {
-    "serial_rx":16,
-    "serial_tx":16,
+    "serial_rx":44,
+    "serial_tx":43,
 
     "radio_miso":9,
     "radio_mosi":11,
@@ -21,8 +21,6 @@
 
     "led":2,
     "led_rgb_isgrb":false,
-    "ledidx_rgb_status":[0],
-    "ledidx_rgb_boot":[0],
  
     "use_backpack": false,
     "debug_backpack_baud": 460800,

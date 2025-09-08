@@ -10,3 +10,6 @@ src/data/*.json
 src/hardware
 !src/hardware/targets.json
 !src/hardware/TX/DIY%20S3%20Nimbus.json
+.DS_Store
+.vscode/
+user_def.txt

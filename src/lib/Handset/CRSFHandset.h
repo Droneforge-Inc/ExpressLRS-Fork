@@ -12,6 +12,11 @@
 #include "driver/uart.h"
 #endif
 
+#if defined(PLATFORM_ESP32_S3)
+#include "USB.h"
+#define USBSerial Serial
+#endif
+
 class CRSFHandset final : public Handset
 {
 

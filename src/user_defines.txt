@@ -81,8 +81,12 @@
 
 ### Debugging options ###
 
+# Force TX to always be connected (bypasses UART watchdog)
+# Needed to circumvent a logic error in CRSFHandset.cpp (UARTwdg function)
+-DDEBUG_TX_FREERUN
+
 # Turn on debug messages, if disabled then all debugging options (starting with DEBUG_) are disabled
--DDEBUG_LOG
+#-DDEBUG_LOG
 
 # For an ESP32S3 MCU, there are two options:
 # 1 - Pull-up on GPIO3, USB for JTAG (on MI_02), debug logging uses main UART.
@@ -90,7 +94,7 @@
 #-DESP32_S3_USB_JTAG_ENABLED
 
 # Use DEBUG_LOG_VERBOSE instead (or both) to see verbose debug logging (spammy stuff)
--DDEBUG_LOG_VERBOSE
+#-DDEBUG_LOG_VERBOSE
 
 # Print a letter for each packet received or missed (RX debugging)
 #-DDEBUG_RX_SCOREBOARD

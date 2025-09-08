@@ -679,7 +679,7 @@ void ICACHE_RAM_ATTR timerCallback()
   // Sync OpenTX to this point
   if (!(OtaNonce % ExpressLRS_currAirRate_Modparams->numOfSends))
   {
-    handset->JustSentRFpacket();
+    if (handset != nullptr) handset->JustSentRFpacket();
   }
 
   // Do not transmit or advance FHSS/Nonce until in disconnected/connected state
@@ -755,7 +755,7 @@ void ResetPower()
   // (user may be turning up the power while flying and dropping the power may compromise the link)
   if (config.GetDynamicPower())
   {
-    if (!handset->IsArmed())
+    if (handset != nullptr && !handset->IsArmed())
     {
       // if dynamic power enabled and not armed then set to MinPower
       POWERMGNT::setPower(MinPower);
@@ -962,7 +962,7 @@ static void CheckReadyToSend()
   if (RxWiFiReadyToSend)
   {
     RxWiFiReadyToSend = false;
-    if (!handset->IsArmed())
+    if (handset != nullptr && !handset->IsArmed())
     {
       SendRxWiFiOverMSP();
     }
@@ -1343,6 +1343,11 @@ static void setupTarget()
     pinMode(GPIO_PIN_TCXO_EN, OUTPUT);
     digitalWrite(GPIO_PIN_TCXO_EN, HIGH);
   }
+  // if (GPIO_PIN_LED != UNDEF_PIN)
+  // {
+  //   pinMode(GPIO_PIN_LED, OUTPUT);
+  //   digitalWrite(GPIO_PIN_LED, LOW);
+  // }
 
   setupSerial();
   setupTargetCommon();
@@ -1492,7 +1497,7 @@ void setup()
 #endif
 
   devicesStart();
-  hwTimer::resume();
+  EnterBindingMode();
 
   if (firmwareOptions.is_airport)
   {
@@ -1502,6 +1507,7 @@ void setup()
   }
 }
 
+// uint32_t lastTx = 0;
 void loop()
 {
   uint32_t now = millis();
@@ -1515,6 +1521,16 @@ void loop()
   }
   #endif
 
+  // if (now - lastTx > 100)
+  // {
+  //   lastTx = now;
+  //   if (GPIO_PIN_LED != UNDEF_PIN)
+  //   {
+  //       DBGLN("LED LOW");
+  //       digitalWrite(GPIO_PIN_LED, LOW);
+  //   }  
+  // }
+  
   if (connectionState < MODE_STATES)
   {
     UpdateConnectDisconnectStatus();
@@ -1555,7 +1571,9 @@ void loop()
     uint8_t linkStatisticsFrame[CRSF_FRAME_NOT_COUNTED_BYTES + CRSF_FRAME_SIZE(sizeof(crsfLinkStatistics_t))];
 
     CRSFHandset::makeLinkStatisticsPacket(linkStatisticsFrame);
-    handset->sendTelemetryToTX(linkStatisticsFrame);
+    if (handset != nullptr)
+      handset->sendTelemetryToTX(linkStatisticsFrame);
+      
     sendCRSFTelemetryToBackpack(linkStatisticsFrame);
     TLMpacketReported = now;
   }
@@ -1581,7 +1599,10 @@ void loop()
       else
       {
         // Send all other tlm to handset
-        handset->sendTelemetryToTX(CRSFinBuffer);
+        if (handset != nullptr)
+        {
+          handset->sendTelemetryToTX(CRSFinBuffer);
+        }
         sendCRSFTelemetryToBackpack(CRSFinBuffer);
       }
       TelemetryReceiver.Unlock();
