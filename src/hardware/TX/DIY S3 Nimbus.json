@@ -28,9 +28,14 @@
     "debug_backpack_tx": 43,
     "passthrough_baud": 115200,
 
-    "ch_up_interrupt": 17,
-    "ch_down_interrupt": 18,
-    "ch_1_gate": 45,
-    "ch_2_gate": 48,
-    "ch_3_gate": 47
+    "use_vtx_channels": true,
+    "vtx_rssi": 14,
+    "vtx_bbs_data": 39,
+    "vtx_bbs_cs": 40,
+    "vtx_bbs_sck": 41,
+    "vtx_ch_up": 17,
+    "vtx_ch_down": 18,
+    "vtx_ch_1": 45,
+    "vtx_ch_2": 48,
+    "vtx_ch_3": 47
 }

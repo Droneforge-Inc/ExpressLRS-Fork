@@ -148,6 +148,17 @@ typedef enum {
     HARDWARE_vtx_amp_pwm_25mW,
     HARDWARE_vtx_amp_pwm_100mW,
 
+    // VTX Channels
+    HARDWARE_vtx_rssi,
+    HARDWARE_vtx_bbs_data,
+    HARDWARE_vtx_bbs_cs,
+    HARDWARE_vtx_bbs_sck,
+    // HARDWARE_vtx_ch_1,
+    // HARDWARE_vtx_ch_2,
+    // HARDWARE_vtx_ch_3,
+    // HARDWARE_vtx_ch_up,
+    // HARDWARE_vtx_ch_down,
+
     HARDWARE_LAST
 } nameType;
 

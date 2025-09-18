@@ -5,6 +5,8 @@
 #include "lua.h"
 #include "msp.h"
 #include "msptypes.h"
+// #include "vtxChannels.h"
+#include "vrx.h"
 #include "telemetry_protocol.h"
 #include "stubborn_receiver.h"
 #include "stubborn_sender.h"
@@ -96,6 +98,9 @@ uint8_t CRSFinBuffer[CRSF_MAX_PACKET_LEN+1];
 
 device_affinity_t ui_devices[] = {
   {&Handset_device, 1},
+#ifdef HAS_VRX
+  {&VRX_device, 0},
+#endif
 #ifdef HAS_LED
   {&LED_device, 0},
 #endif
@@ -1338,11 +1343,40 @@ static void setupTarget()
     pinMode(GPIO_PIN_ANT_CTRL_COMPL, OUTPUT);
     digitalWrite(GPIO_PIN_ANT_CTRL_COMPL, !diversityAntennaState);
   }
+
+  // Enable TCXO for LoRa 128x radios
   if (GPIO_PIN_TCXO_EN != UNDEF_PIN)
   {
     pinMode(GPIO_PIN_TCXO_EN, OUTPUT);
     digitalWrite(GPIO_PIN_TCXO_EN, HIGH);
   }
+
+  // if (GPIO_PIN_VTX_CH_UP != UNDEF_PIN)
+  // {
+  //   pinMode(GPIO_PIN_VTX_CH_UP, INPUT_PULLUP);
+  //   // attachInterrupt(digitalPinToInterrupt(GPIO_PIN_VTX_CH_UP), upInterruptHandler, FALLING);
+  // }
+  // if (GPIO_PIN_VTX_CH_DOWN != UNDEF_PIN)
+  // {
+  //   pinMode(GPIO_PIN_VTX_CH_DOWN, INPUT_PULLUP);
+  //   // attachInterrupt(digitalPinToInterrupt(GPIO_PIN_VTX_CH_DOWN), downInterruptHandler, FALLING);
+  // }
+  // if (GPIO_PIN_VTX_CH_1 != UNDEF_PIN)
+  // {
+  //   pinMode(GPIO_PIN_VTX_CH_1, OUTPUT);
+  //   digitalWrite(GPIO_PIN_VTX_CH_1, HIGH);
+  // }
+  // if (GPIO_PIN_VTX_CH_2 != UNDEF_PIN)
+  // {
+  //   pinMode(GPIO_PIN_VTX_CH_2, OUTPUT);
+  //   digitalWrite(GPIO_PIN_VTX_CH_2, HIGH);
+  // }
+  // if (GPIO_PIN_VTX_CH_3 != UNDEF_PIN)
+  // {
+  //   pinMode(GPIO_PIN_VTX_CH_3, OUTPUT);
+  //   digitalWrite(GPIO_PIN_VTX_CH_3, HIGH);
+  // }
+
   // if (GPIO_PIN_LED != UNDEF_PIN)
   // {
   //   pinMode(GPIO_PIN_LED, OUTPUT);
@@ -1669,4 +1703,20 @@ void loop()
         MspSender.SetDataToTransmit(nextPayload, nextPlayloadSize);
     }
   }
+
+// #if defined(USE_VTX_CHANNELS)
+//   if (upPressed)
+//   {
+//     vtxChannel = (vtxChannel + 1) % 8;
+//     upPressed = false;
+//   }
+
+//   if (downPressed)
+//   {
+//     vtxChannel = (vtxChannel - 1 + 8) % 8;
+//     downPressed = false;
+//   }
+
+//   setVtxChannel(vtxChannel);
+// #endif
 }
