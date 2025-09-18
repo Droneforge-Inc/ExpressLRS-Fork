@@ -202,11 +202,6 @@
 #define GPIO_PIN_VTX_BBS_DATA hardware_pin(HARDWARE_vtx_bbs_data)
 #define GPIO_PIN_VTX_BBS_CS hardware_pin(HARDWARE_vtx_bbs_cs)
 #define GPIO_PIN_VTX_BBS_SCK hardware_pin(HARDWARE_vtx_bbs_sck)
-// #define GPIO_PIN_VTX_CH_1 hardware_pin(HARDWARE_vtx_ch_1)
-// #define GPIO_PIN_VTX_CH_2 hardware_pin(HARDWARE_vtx_ch_2)
-// #define GPIO_PIN_VTX_CH_3 hardware_pin(HARDWARE_vtx_ch_3)
-// #define GPIO_PIN_VTX_CH_UP hardware_pin(HARDWARE_vtx_ch_up)
-// #define GPIO_PIN_VTX_CH_DOWN hardware_pin(HARDWARE_vtx_ch_down)
 
 /*
 // These are RX settings

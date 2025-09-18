@@ -1,9 +1,7 @@
-#include <Arduino.h>
 #include <stdint.h>
 
 #include "bbs_protocol.h"
 #include "targets.h"
-#include "settings.h"
 
 static inline void sendBit(uint8_t value);
 static inline void sendBits(uint32_t bits, uint8_t count = 20);

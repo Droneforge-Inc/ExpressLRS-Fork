@@ -143,11 +143,6 @@ static const struct {
     {HARDWARE_vtx_bbs_data, "vtx_bbs_data", INT},
     {HARDWARE_vtx_bbs_cs, "vtx_bbs_cs", INT},
     {HARDWARE_vtx_bbs_sck, "vtx_bbs_sck", INT},
-    // {HARDWARE_vtx_ch_1, "vtx_ch_1", INT},
-    // {HARDWARE_vtx_ch_2, "vtx_ch_2", INT},
-    // {HARDWARE_vtx_ch_3, "vtx_ch_3", INT},
-    // {HARDWARE_vtx_ch_up, "vtx_ch_up", INT},
-    // {HARDWARE_vtx_ch_down, "vtx_ch_down", INT},
 };
 
 typedef union {

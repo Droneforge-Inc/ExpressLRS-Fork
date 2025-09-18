@@ -1,6 +1,5 @@
 #include <Arduino.h>
 
-// #include "settings.h"
 #include "vrx.h"
 #include "bbs_protocol.h"
 #include "vrx_channels.h"
@@ -9,9 +8,7 @@
 
 #include "vrx_timer.h"
 
-// static void updateRssiLimits();
-// static void writeSerialData();
-
+static void writeSerialData();
 
 uint8_t activeChannel = 0;
 
@@ -21,9 +18,7 @@ uint8_t rssiLast[RECEIVER_LAST_DATA_SIZE] = { 0 };
 
 static VrxTimer rssiStableTimer = VrxTimer(MIN_TUNE_TIME);
 static VrxTimer rssiLogTimer = VrxTimer(RECEIVER_LAST_DELAY);
-    // #ifdef USE_SERIAL_OUT
-    //     static Timer serialLogTimer = Timer(25);
-    // #endif
+static VrxTimer serialLogTimer = VrxTimer(25);
 
 void VRX::setChannel(uint8_t channel)
 {
@@ -92,19 +87,16 @@ void VRX::setup() {
 void VRX::update() {
     if (rssiStableTimer.hasTicked()) {
         updateRssi();
-
-        // #ifdef USE_SERIAL_OUT
-        //     writeSerialData();
-        // #endif
+        writeSerialData();
     }
 }
 
-// static void writeSerialData() {
-//     if (VRX::serialLogTimer.hasTicked()) {
-//         DBGLN("Active channel: %d", VRX::activeChannel);
-//         DBGLN("RSSI: %d", VRX::rssi);
-//         DBGLN("RSSI raw: %d", VRX::rssiRaw);
-//         DBGLN("RSSI last: %d", VRX::rssiLast);
-//         VRX::serialLogTimer.reset();
-//     }
-// }
+static void writeSerialData() {
+    if (VRX::serialLogTimer.hasTicked()) {
+        DBGLN("Active channel: %d", VRX::activeChannel);
+        DBGLN("RSSI: %d", VRX::rssi);
+        DBGLN("RSSI raw: %d", VRX::rssiRaw);
+        DBGLN("RSSI last: %d", VRX::rssiLast);
+        VRX::serialLogTimer.reset();
+    }
+}

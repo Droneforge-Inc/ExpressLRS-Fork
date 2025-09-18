@@ -32,10 +32,5 @@
     "vtx_rssi": 14,
     "vtx_bbs_data": 39,
     "vtx_bbs_cs": 40,
-    "vtx_bbs_sck": 41,
-    "vtx_ch_up": 17,
-    "vtx_ch_down": 18,
-    "vtx_ch_1": 45,
-    "vtx_ch_2": 48,
-    "vtx_ch_3": 47
+    "vtx_bbs_sck": 41
 }

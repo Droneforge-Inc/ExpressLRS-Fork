@@ -87,16 +87,22 @@ typedef enum : uint8_t
     CRSF_FRAMETYPE_MSP_WRITE = 0x7C, // write with 8 byte chunked binary (OpenTX outbound telemetry buffer limit)
     // Ardupilot frames
     CRSF_FRAMETYPE_ARDUPILOT_RESP = 0x80,
+
+    // Custom/Nimbus frames
+    CRSF_FRAMETYPE_NIMBUS_VRX_RSSI = 0xE0,
+    CRSF_FRAMETYPE_NIMBUS_VRX_TOP_CHANNELS = 0xE1
 } crsf_frame_type_e;
 
 typedef enum : uint8_t {
-    CRSF_COMMAND_SUBCMD_RX = 0x10
+    CRSF_COMMAND_SUBCMD_RX = 0x10,
+    CRSF_COMMAND_SUBCMD_NIMBUS_SDK = 0x80
 } crsf_command_e;
 
 typedef enum : uint8_t {
     CRSF_COMMAND_SUBCMD_RX_BIND = 0x01,
     CRSF_COMMAND_MODEL_SELECT_ID = 0x05,
     CRSF_HANDSET_SUBCMD_TIMING = 0x10,
+    CRSF_COMMAND_NIMBUS_VRX_SCAN = 0x40
 } crsf_subcommand_e;
 
 enum {

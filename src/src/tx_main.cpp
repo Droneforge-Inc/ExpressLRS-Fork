@@ -1352,32 +1352,6 @@ static void setupTarget()
     digitalWrite(GPIO_PIN_TCXO_EN, HIGH);
   }
 
-  // if (GPIO_PIN_VTX_CH_UP != UNDEF_PIN)
-  // {
-  //   pinMode(GPIO_PIN_VTX_CH_UP, INPUT_PULLUP);
-  //   // attachInterrupt(digitalPinToInterrupt(GPIO_PIN_VTX_CH_UP), upInterruptHandler, FALLING);
-  // }
-  // if (GPIO_PIN_VTX_CH_DOWN != UNDEF_PIN)
-  // {
-  //   pinMode(GPIO_PIN_VTX_CH_DOWN, INPUT_PULLUP);
-  //   // attachInterrupt(digitalPinToInterrupt(GPIO_PIN_VTX_CH_DOWN), downInterruptHandler, FALLING);
-  // }
-  // if (GPIO_PIN_VTX_CH_1 != UNDEF_PIN)
-  // {
-  //   pinMode(GPIO_PIN_VTX_CH_1, OUTPUT);
-  //   digitalWrite(GPIO_PIN_VTX_CH_1, HIGH);
-  // }
-  // if (GPIO_PIN_VTX_CH_2 != UNDEF_PIN)
-  // {
-  //   pinMode(GPIO_PIN_VTX_CH_2, OUTPUT);
-  //   digitalWrite(GPIO_PIN_VTX_CH_2, HIGH);
-  // }
-  // if (GPIO_PIN_VTX_CH_3 != UNDEF_PIN)
-  // {
-  //   pinMode(GPIO_PIN_VTX_CH_3, OUTPUT);
-  //   digitalWrite(GPIO_PIN_VTX_CH_3, HIGH);
-  // }
-
   // if (GPIO_PIN_LED != UNDEF_PIN)
   // {
   //   pinMode(GPIO_PIN_LED, OUTPUT);
