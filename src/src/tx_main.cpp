@@ -20,6 +20,7 @@
 #include "devLUA.h"
 #include "devWIFI.h"
 #include "devButton.h"
+#include "devVRX.h"
 #include "devVTX.h"
 #include "devGsensor.h"
 #include "devThermal.h"

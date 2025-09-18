@@ -5,6 +5,7 @@
 #include "bbs_protocol.h"
 #include "vrx_channels.h"
 #include "targets.h"
+#include "logging.h"
 
 #include "vrx_timer.h"
 
