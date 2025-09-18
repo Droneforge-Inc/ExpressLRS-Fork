@@ -92,11 +92,11 @@ void VRX::update() {
 }
 
 static void writeSerialData() {
-    if (VRX::serialLogTimer.hasTicked()) {
-        DBGLN("Active channel: %d", VRX::activeChannel);
-        DBGLN("RSSI: %d", VRX::rssi);
-        DBGLN("RSSI raw: %d", VRX::rssiRaw);
-        DBGLN("RSSI last: %d", VRX::rssiLast);
-        VRX::serialLogTimer.reset();
+    if (serialLogTimer.hasTicked()) {
+        DBGLN("Active channel: %d", activeChannel);
+        DBGLN("RSSI: %d", rssi);
+        DBGLN("RSSI raw: %d", rssiRaw);
+        DBGLN("RSSI last: %d", rssiLast);
+        serialLogTimer.reset();
     }
 }
