@@ -6,7 +6,8 @@
 #define RECEIVER_LAST_DELAY 50
 #define RECEIVER_LAST_DATA_SIZE 24
 
-#define RSSI_MIN_VAL 90
+// TODO: Determine real ranges
+#define RSSI_MIN_VAL 90 
 #define RSSI_MAX_VAL 220
 
 class VRX {

@@ -61,7 +61,7 @@ uint16_t VRX::updateRssi() {
 void VRX::setup() {
   if (GPIO_PIN_VTX_RSSI != UNDEF_PIN)
   {
-    pinMode(GPIO_PIN_VTX_RSSI, INPUT);
+    pinMode(GPIO_PIN_VTX_RSSI, INPUT_PULLUP);
   }
   if (GPIO_PIN_VTX_BBS_DATA != UNDEF_PIN)
   {
@@ -79,9 +79,7 @@ void VRX::setup() {
     digitalWrite(GPIO_PIN_VTX_BBS_SCK, LOW);
   }
 
-// #ifdef DISABLE_AUDIO
-//     ReceiverSpi::setPowerDownRegister(0b00010000110111110011);
-// #endif
+  BbsProtocol::setPowerDownRegister(0b00010000110111110011);
 }
 
 void VRX::update() {

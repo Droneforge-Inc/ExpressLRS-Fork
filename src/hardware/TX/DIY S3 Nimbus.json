@@ -30,7 +30,7 @@
 
     "use_vtx_channels": true,
     "vtx_rssi": 14,
-    "vtx_bbs_data": 39,
+    "vtx_bbs_data": 41,
     "vtx_bbs_cs": 40,
-    "vtx_bbs_sck": 41
+    "vtx_bbs_sck": 39
 }
