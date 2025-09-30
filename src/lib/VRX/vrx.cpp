@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <cstring>
 
 #include "vrx.h"
 #include "bbs_protocol.h"
@@ -16,9 +17,39 @@ uint8_t rssi = 0;
 uint16_t rssiRaw = 0;
 uint8_t rssiLast[RECEIVER_LAST_DATA_SIZE] = { 0 };
 
+bool shouldScan = false;
+bool isScanning = false;
+bool scanAutoConnect = false;
+bool scanComplete = false;
+
+uint8_t scanIndex = 0;
+uint8_t bestRssiIndex = 0;
+uint8_t originalChannelIndex = 0;
+uint8_t scanRssiData[CHANNELS_SIZE] = { 0 };
+
 static VrxTimer rssiStableTimer = VrxTimer(MIN_TUNE_TIME);
 static VrxTimer rssiLogTimer = VrxTimer(RECEIVER_LAST_DELAY);
 static VrxTimer serialLogTimer = VrxTimer(25);
+
+bool VRX::getShouldScan()
+{
+    return shouldScan;
+}
+
+bool VRX::getIsScanning()
+{
+    return isScanning;
+}
+
+bool VRX::getScanComplete()
+{
+    return scanComplete;
+}
+
+uint8_t* VRX::getScanRssiData()
+{
+    return scanRssiData;
+}
 
 void VRX::setChannel(uint8_t channel)
 {
@@ -82,10 +113,60 @@ void VRX::setup() {
   BbsProtocol::setPowerDownRegister(0b00010000110111110011);
 }
 
+void VRX::triggerScan(bool autoConnect)
+{
+    shouldScan = true;
+    scanAutoConnect = autoConnect;
+}
+
+void VRX::startScan()
+{
+    DBGLN("VRX: Starting scan. AutoConnect: %d", scanAutoConnect);
+    isScanning = true;
+    scanComplete = false;
+    shouldScan = false;
+    scanIndex = 0;
+    bestRssiIndex = 0;
+    originalChannelIndex = activeChannel;
+    memset(scanRssiData, 0, sizeof(scanRssiData));
+    setChannel(VrxChannels::getOrderedIndex(scanIndex));
+}
+
+void VRX::stopScan()
+{
+    DBGLN("VRX: Stopping scan");
+    isScanning = false;
+    scanAutoConnect = false;
+    setChannel(originalChannelIndex);
+}
+
 void VRX::update() {
     if (rssiStableTimer.hasTicked()) {
         updateRssi();
         writeSerialData();
+        
+        // Handle scan logic during update
+        if (isScanning) {
+            scanRssiData[scanIndex] = rssi;
+            if (rssi > scanRssiData[bestRssiIndex]) {
+                bestRssiIndex = scanIndex;
+            }
+
+            scanIndex = (scanIndex + 1) % CHANNELS_SIZE;
+            setChannel(VrxChannels::getOrderedIndex(scanIndex));
+
+            if (scanIndex == 0) {
+                if (scanAutoConnect) {
+                    setChannel(VrxChannels::getOrderedIndex(bestRssiIndex));
+                } else {
+                    setChannel(originalChannelIndex);
+                }
+
+                isScanning = false;
+                scanAutoConnect = false;
+                scanComplete = true;
+            }
+        }
     }
 }
 

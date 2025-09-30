@@ -1,5 +1,6 @@
 #include "devVRX.h"
 #include "vrx.h"
+#include "device.h"
 
 VRX *vrx;
 
@@ -18,11 +19,29 @@ static int start()
 static int timeout()
 {
     vrx->update();
+
+    if (vrx->getScanComplete()) {
+        uint8_t* scanResults = vrx->getScanRssiData();
+
+        // TODO: constructs and send frame back to sdk
+    }
+
     return DURATION_IMMEDIATELY;
+}
+
+void VrxTriggerScan(bool autoConnect)
+{
+    vrx->triggerScan(autoConnect);
+    devicesTriggerEvent();
 }
 
 static int event()
 {
+    if (vrx && vrx->getShouldScan() && !vrx->getIsScanning() && !vrx->getScanComplete())
+    {
+        vrx->startScan();
+    }
+    
     return DURATION_IGNORE;
 }
 

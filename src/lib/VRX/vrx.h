@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "vrx_channels.h"
 
 #define MIN_TUNE_TIME 25
 #define RECEIVER_LAST_DELAY 50
@@ -17,11 +18,30 @@ private:
     uint8_t rssi;
     uint16_t rssiRaw;
     uint8_t rssiLast[RECEIVER_LAST_DATA_SIZE];
+    
+    bool shouldScan;
+    bool isScanning;
+    bool scanAutoConnect;
+    bool scanComplete;
+
+    uint8_t scanIndex;
+    uint8_t bestRssiIndex;
+    uint8_t originalChannelIndex;
+    uint8_t scanRssiData[CHANNELS_SIZE];
 
 public:
+    bool getShouldScan();
+    bool getIsScanning();
+    bool getScanComplete();
+    uint8_t* getScanRssiData();
+
     void setChannel(uint8_t channel);
     uint16_t updateRssi();
     bool isRssiStable();
+    
+    void triggerScan(bool autoConnect);
+    void startScan(bool autoConnect);
+    void stopScan();
 
     void setup();
     void update();
