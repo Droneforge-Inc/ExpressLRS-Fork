@@ -63,7 +63,7 @@ bool VRX::isRssiStable() {
     return rssiStableTimer.hasTicked();
 }
 
-uint16_t VRX::updateRssi() {
+void VRX::updateRssi() {
     analogRead(GPIO_PIN_VTX_RSSI); // Fake read to let ADC settle.
     rssiRaw = analogRead(GPIO_PIN_VTX_RSSI);
 

@@ -36,11 +36,11 @@ public:
     uint8_t* getScanRssiData();
 
     void setChannel(uint8_t channel);
-    uint16_t updateRssi();
+    void updateRssi();
     bool isRssiStable();
     
     void triggerScan(bool autoConnect);
-    void startScan(bool autoConnect);
+    void startScan();
     void stopScan();
 
     void setup();
