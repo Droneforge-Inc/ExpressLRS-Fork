@@ -61,6 +61,26 @@ uint8_t* VRX::getScanRssiData()
     return this->scanRssiData;
 }
 
+bool VRX::getShouldScan()
+{
+    return shouldScan;
+}
+
+bool VRX::getIsScanning()
+{
+    return isScanning;
+}
+
+bool VRX::getScanComplete()
+{
+    return scanComplete;
+}
+
+uint8_t* VRX::getScanRssiData()
+{
+    return scanRssiData;
+}
+
 void VRX::setChannel(uint8_t channel)
 {
     BbsProtocol::setVtxChannel(VrxChannels::getSynthRegisterB(channel));
