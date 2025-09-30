@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "vrx_timer.h"
 #include "vrx_channels.h"
 
 #define MIN_TUNE_TIME 25
@@ -29,7 +30,13 @@ private:
     uint8_t originalChannelIndex;
     uint8_t scanRssiData[CHANNELS_SIZE];
 
+    VrxTimer rssiStableTimer;
+    VrxTimer rssiLogTimer;
+    VrxTimer serialLogTimer;
+
 public:
+    VRX();
+    
     bool getShouldScan();
     bool getIsScanning();
     bool getScanComplete();
@@ -45,4 +52,5 @@ public:
 
     void setup();
     void update();
+    void writeSerialData();
 };

@@ -9,67 +9,62 @@
 
 #include "vrx_timer.h"
 
-static void writeSerialData();
 
-uint8_t activeChannel = 0;
-
-uint8_t rssi = 0;
-uint16_t rssiRaw = 0;
-uint8_t rssiLast[RECEIVER_LAST_DATA_SIZE] = { 0 };
-
-bool shouldScan = false;
-bool isScanning = false;
-bool scanAutoConnect = false;
-bool scanComplete = false;
-
-uint8_t scanIndex = 0;
-uint8_t bestRssiIndex = 0;
-uint8_t originalChannelIndex = 0;
-uint8_t scanRssiData[CHANNELS_SIZE] = { 0 };
-
-static VrxTimer rssiStableTimer = VrxTimer(MIN_TUNE_TIME);
-static VrxTimer rssiLogTimer = VrxTimer(RECEIVER_LAST_DELAY);
-static VrxTimer serialLogTimer = VrxTimer(25);
+VRX::VRX() : rssiStableTimer(MIN_TUNE_TIME), rssiLogTimer(RECEIVER_LAST_DELAY), serialLogTimer(25) {
+    this->activeChannel = 0;
+    this->rssi = 0;
+    this->rssiRaw = 0;
+    this->shouldScan = false;
+    this->isScanning = false;
+    this->scanAutoConnect = false;
+    this->scanComplete = false;
+    this->scanIndex = 0;
+    this->bestRssiIndex = 0;
+    this->originalChannelIndex = 0;
+    
+    memset(this->rssiLast, 0, sizeof(this->rssiLast));
+    memset(this->scanRssiData, 0, sizeof(this->scanRssiData));
+}
 
 bool VRX::getShouldScan()
 {
-    return shouldScan;
+    return this->shouldScan;
 }
 
 bool VRX::getIsScanning()
 {
-    return isScanning;
+    return this->isScanning;
 }
 
 bool VRX::getScanComplete()
 {
-    return scanComplete;
+    return this->scanComplete;
 }
 
 uint8_t* VRX::getScanRssiData()
 {
-    return scanRssiData;
+    return this->scanRssiData;
 }
 
 void VRX::setChannel(uint8_t channel)
 {
     BbsProtocol::setVtxChannel(VrxChannels::getSynthRegisterB(channel));
 
-    rssiStableTimer.reset();
-    activeChannel = channel;
+    this->rssiStableTimer.reset();
+    this->activeChannel = channel;
 }
 
 bool VRX::isRssiStable() {
-    return rssiStableTimer.hasTicked();
+    return this->rssiStableTimer.hasTicked();
 }
 
 void VRX::updateRssi() {
     analogRead(GPIO_PIN_VTX_RSSI); // Fake read to let ADC settle.
-    rssiRaw = analogRead(GPIO_PIN_VTX_RSSI);
+    this->rssiRaw = analogRead(GPIO_PIN_VTX_RSSI);
 
-    rssi = constrain(
+    this->rssi = constrain(
         map(
-            rssiRaw,
+            this->rssiRaw,
             RSSI_MIN_VAL,
             RSSI_MAX_VAL,
             0,
@@ -79,17 +74,19 @@ void VRX::updateRssi() {
         100
     );
 
-    if (rssiLogTimer.hasTicked()) {
+    if (this->rssiLogTimer.hasTicked()) {
         for (uint8_t i = 0; i < RECEIVER_LAST_DATA_SIZE - 1; i++) {
-            rssiLast[i] = rssiLast[i + 1];
+            this->rssiLast[i] = this->rssiLast[i + 1];
         }
 
-        rssiLast[RECEIVER_LAST_DATA_SIZE - 1] = rssi;
-        rssiLogTimer.reset();
+        this->rssiLast[RECEIVER_LAST_DATA_SIZE - 1] = this->rssi;
+        this->rssiLogTimer.reset();
     }
+    
 }
 
 void VRX::setup() {
+  DBGLN("VRX setup, WiFi status: %d", WiFi.status());
   if (GPIO_PIN_VTX_RSSI != UNDEF_PIN)
   {
     pinMode(GPIO_PIN_VTX_RSSI, INPUT_PULLUP);
@@ -115,67 +112,68 @@ void VRX::setup() {
 
 void VRX::triggerScan(bool autoConnect)
 {
-    shouldScan = true;
-    scanAutoConnect = autoConnect;
+    this->shouldScan = true;
+    this->scanAutoConnect = autoConnect;
 }
 
 void VRX::startScan()
 {
-    DBGLN("VRX: Starting scan. AutoConnect: %d", scanAutoConnect);
-    isScanning = true;
-    scanComplete = false;
-    shouldScan = false;
-    scanIndex = 0;
-    bestRssiIndex = 0;
-    originalChannelIndex = activeChannel;
-    memset(scanRssiData, 0, sizeof(scanRssiData));
-    setChannel(VrxChannels::getOrderedIndex(scanIndex));
+    DBGLN("VRX: Starting scan. AutoConnect: %d", this->scanAutoConnect);
+    this->isScanning = true;
+    this->scanComplete = false;
+    this->shouldScan = false;
+    this->scanIndex = 0;
+    this->bestRssiIndex = 0;
+    this->originalChannelIndex = this->activeChannel;
+    memset(this->scanRssiData, 0, sizeof(this->scanRssiData));
+    setChannel(VrxChannels::getOrderedIndex(this->scanIndex));
 }
 
 void VRX::stopScan()
 {
     DBGLN("VRX: Stopping scan");
-    isScanning = false;
-    scanAutoConnect = false;
-    setChannel(originalChannelIndex);
+    this->isScanning = false;
+    this->scanAutoConnect = false;
+    setChannel(this->originalChannelIndex);
 }
 
 void VRX::update() {
-    if (rssiStableTimer.hasTicked()) {
+  // DBGLN("Updating VRX");
+    if (this->rssiStableTimer.hasTicked()) {
         updateRssi();
         writeSerialData();
         
         // Handle scan logic during update
-        if (isScanning) {
-            scanRssiData[scanIndex] = rssi;
-            if (rssi > scanRssiData[bestRssiIndex]) {
-                bestRssiIndex = scanIndex;
+        if (this->isScanning) {
+            this->scanRssiData[this->scanIndex] = this->rssi;
+            if (this->rssi > this->scanRssiData[this->bestRssiIndex]) {
+                this->bestRssiIndex = this->scanIndex;
             }
 
-            scanIndex = (scanIndex + 1) % CHANNELS_SIZE;
-            setChannel(VrxChannels::getOrderedIndex(scanIndex));
+            this->scanIndex = (this->scanIndex + 1) % CHANNELS_SIZE;
+            setChannel(VrxChannels::getOrderedIndex(this->scanIndex));
 
-            if (scanIndex == 0) {
-                if (scanAutoConnect) {
-                    setChannel(VrxChannels::getOrderedIndex(bestRssiIndex));
+            if (this->scanIndex == 0) {
+                if (this->scanAutoConnect) {
+                    setChannel(VrxChannels::getOrderedIndex(this->bestRssiIndex));
                 } else {
-                    setChannel(originalChannelIndex);
+                    setChannel(this->originalChannelIndex);
                 }
 
-                isScanning = false;
-                scanAutoConnect = false;
-                scanComplete = true;
+                this->isScanning = false;
+                this->scanAutoConnect = false;
+                this->scanComplete = true;
             }
         }
     }
 }
 
-static void writeSerialData() {
-    if (serialLogTimer.hasTicked()) {
-        DBGLN("Active channel: %d", activeChannel);
-        DBGLN("RSSI: %d", rssi);
-        DBGLN("RSSI raw: %d", rssiRaw);
-        DBGLN("RSSI last: %d", rssiLast);
-        serialLogTimer.reset();
+void VRX::writeSerialData() {
+    if (this->serialLogTimer.hasTicked()) {
+        DBGLN("Active channel: %d", this->activeChannel);
+        DBGLN("RSSI: %d", this->rssi);
+        DBGLN("RSSI raw: %d", this->rssiRaw);
+        DBGLN("RSSI last: %d", this->rssiLast[RECEIVER_LAST_DATA_SIZE - 1]);
+        this->serialLogTimer.reset();
     }
 }
