@@ -63,22 +63,22 @@ uint8_t* VRX::getScanRssiData()
 
 bool VRX::getShouldScan()
 {
-    return shouldScan;
+    return this->shouldScan;
 }
 
 bool VRX::getIsScanning()
 {
-    return isScanning;
+    return this->isScanning;
 }
 
 bool VRX::getScanComplete()
 {
-    return scanComplete;
+    return this->scanComplete;
 }
 
 uint8_t* VRX::getScanRssiData()
 {
-    return scanRssiData;
+    return this->scanRssiData;
 }
 
 void VRX::setChannel(uint8_t channel)
@@ -132,6 +132,7 @@ void VRX::updateRssi() {
 }
 
 void VRX::setup() {
+  DBGLN("VRX setup, WiFi status: %d", WiFi.status());
   if (GPIO_PIN_VTX_RSSI != UNDEF_PIN)
   {
     pinMode(GPIO_PIN_VTX_RSSI, INPUT_PULLUP);
