@@ -43,6 +43,7 @@ bool VRX::getScanComplete()
 
 uint8_t* VRX::getScanRssiData()
 {
+    this->scanComplete = false;
     return this->scanRssiData;
 }
 
@@ -86,7 +87,6 @@ void VRX::updateRssi() {
 }
 
 void VRX::setup() {
-  DBGLN("VRX setup, WiFi status: %d", WiFi.status());
   if (GPIO_PIN_VTX_RSSI != UNDEF_PIN)
   {
     pinMode(GPIO_PIN_VTX_RSSI, INPUT_PULLUP);
@@ -138,7 +138,6 @@ void VRX::stopScan()
 }
 
 void VRX::update() {
-  // DBGLN("Updating VRX");
     if (this->rssiStableTimer.hasTicked()) {
         updateRssi();
         writeSerialData();
@@ -163,6 +162,9 @@ void VRX::update() {
                 this->isScanning = false;
                 this->scanAutoConnect = false;
                 this->scanComplete = true;
+                
+                DBGLN("VRX: Best RSSI index: %d", this->bestRssiIndex);
+                DBGLN("VRX: Scan complete");
             }
         }
     }
