@@ -14,7 +14,8 @@
 
 #if defined(PLATFORM_ESP32_S3)
 #include "USB.h"
-#define USBSerial Serial
+#include "USBCDC.h"
+extern USBCDC CustomUSB;
 #endif
 
 class CRSFHandset final : public Handset

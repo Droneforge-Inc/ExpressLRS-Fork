@@ -28,7 +28,17 @@
 
 #if defined(PLATFORM_ESP32_S3)
 #include "USB.h"
+#include "USBCDC.h"
+
 #define USBSerial Serial
+USBCDC CustomUSB;
+
+// Custom USB descriptors
+#define USB_VID_DF 0xdfaa
+#define USB_PID_DF 0x8001
+#define USB_MANUFACTURER_DF "Droneforge"
+#define USB_PRODUCT_DF "Droneforge Nimbus"
+#define USB_SERIAL_DF "df"
 #endif
 
 //// CONSTANTS ////
@@ -1271,7 +1281,11 @@ static void setupSerial()
   TxBackpack = serialPort;
 
 #if defined(PLATFORM_ESP32_S3)
-  Serial.begin(460800);
+  USB.manufacturerName(USB_MANUFACTURER_DF);
+  USB.productName(USB_PRODUCT_DF);
+  USB.serialNumber(USB_SERIAL_DF);
+  CustomUSB.begin(firmwareOptions.uart_baud);
+  USB.begin();
 #endif
 
 // Setup TxUSB

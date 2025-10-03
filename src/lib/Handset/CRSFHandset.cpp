@@ -68,10 +68,8 @@ void CRSFHandset::Begin()
     halfDuplex = (GPIO_PIN_RCSIGNAL_TX == GPIO_PIN_RCSIGNAL_RX);
 
 #if defined(PLATFORM_ESP32_S3)
-    USBSerial.begin(UARTrequestedBaud);
-    USBSerial.setRxBufferSize(16384);
-    USBSerial.setTxBufferSize(1024);
-    CRSFHandset::PortSecondary = &USBSerial;
+    CustomUSB.begin(UARTrequestedBaud);
+    CRSFHandset::PortSecondary = &CustomUSB;
     CRSFHandset::PortSecondary->setTimeout(0);
 #endif
 

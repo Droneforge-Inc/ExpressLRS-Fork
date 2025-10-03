@@ -841,7 +841,7 @@
             },
             "nimbus_s3": {
                 "product_name": "DIY ESP32-S3 Nimbus 2.4Ghz TX",
-                "lua_name": "Nimbus S3 LoRa128x",
+                "lua_name": "Nimbus S3 LoRa128X",
                 "layout_file": "DIY S3 Nimbus.json",
                 "upload_methods": ["uart", "wifi", "etx"],
                 "min_version": "3.4.0",
