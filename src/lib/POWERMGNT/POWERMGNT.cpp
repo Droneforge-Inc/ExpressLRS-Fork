@@ -119,22 +119,34 @@ PowerLevels_e POWERMGNT::decPower()
 
 void POWERMGNT::incSX1280Output()
 {
+#ifdef FCC_MAX_EMISSIONS_TEST
+    // Force maximum power for FCC testing
+    CurrentSX1280Power = 13;
+    Radio.SetOutputPower(CurrentSX1280Power);
+#else
     // Power adjustment is capped to within +-3dB of the target power level to prevent power run-away
     if (CurrentSX1280Power < 13 && CurrentSX1280Power < powerValues[CurrentPower] + 3)
     {
         CurrentSX1280Power++;
         Radio.SetOutputPower(CurrentSX1280Power);
     }
+#endif
 }
 
 void POWERMGNT::decSX1280Output()
 {
+#ifdef FCC_MAX_EMISSIONS_TEST
+    // Force maximum power for FCC testing - don't allow decreasing
+    CurrentSX1280Power = 13;
+    Radio.SetOutputPower(CurrentSX1280Power);
+#else
     // Power adjustment is capped to within +-3dB of the target power level to prevent power run-away
     if (CurrentSX1280Power > -18 && CurrentSX1280Power > powerValues[CurrentPower] - 3)
     {
         CurrentSX1280Power--;
         Radio.SetOutputPower(CurrentSX1280Power);
     }
+#endif
 }
 
 int8_t POWERMGNT::currentSX1280Output()
@@ -307,6 +319,11 @@ void POWERMGNT::setPower(PowerLevels_e Power)
     else if (powerValues != nullptr)
     {
         CurrentSX1280Power = powerValues[Power - MinPower] + powerCaliValues[Power];
+#ifdef FCC_MAX_EMISSIONS_TEST
+        // Force maximum SX1280 power for FCC testing
+        CurrentSX1280Power = 13; // SX1280_POWER_MAX
+        DBGLN("FCC_MAX_EMISSIONS_TEST: Forcing max power %d dBm", CurrentSX1280Power);
+#endif
         Radio.SetOutputPower(CurrentSX1280Power);
     }
 #endif

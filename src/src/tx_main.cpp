@@ -374,6 +374,11 @@ uint8_t adjustPacketRateForBaud(uint8_t rateIndex)
 
 void SetRFLinkRate(uint8_t index) // Set speed of RF link
 {
+#ifdef FCC_MAX_EMISSIONS_TEST
+  // Force FCC test rate for maximum emissions
+  index = 10;
+  DBGLN("FCC_MAX_EMISSIONS_TEST: Forcing rate index %u", index);
+#endif
   expresslrs_mod_settings_s *const ModParams = get_elrs_airRateConfig(index);
   expresslrs_rf_pref_params_s *const RFperf = get_elrs_RFperfParams(index);
   // Binding always uses invertIQ

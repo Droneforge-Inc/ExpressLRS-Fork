@@ -213,7 +213,7 @@ void VRX::connect() {
 void VRX::update() {
     if (this->rssiStableTimer.hasTicked()) {
         updateRssi();
-        writeSerialData();
+        // writeSerialData();
         
         // Handle scan logic during update
         if (this->isScanning) {

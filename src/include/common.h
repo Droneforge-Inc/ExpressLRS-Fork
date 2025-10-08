@@ -89,6 +89,7 @@ typedef enum : uint8_t
     RATE_LORA_250HZ,
     RATE_LORA_333HZ_8CH,
     RATE_LORA_500HZ,
+    RATE_LORA_500HZ_FCC, // FCC max emissions test
     RATE_DVDA_250HZ, // FLRC
     RATE_DVDA_500HZ, // FLRC
     RATE_FLRC_500HZ,
@@ -285,7 +286,7 @@ extern SX127xDriver Radio;
 extern LR1121Driver Radio;
 
 #elif defined(RADIO_SX128X)
-#define RATE_MAX 10     // 2xFLRC + 2xDVDA + 4xLoRa + 2xFullRes
+#define RATE_MAX 11     // 2xFLRC + 2xDVDA + 4xLoRa + 2xFullRes + 1xFCC_TEST
 #define RATE_BINDING RATE_LORA_50HZ
 
 extern SX1280Driver Radio;

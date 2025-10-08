@@ -659,7 +659,11 @@ TxConfig::SetDefaults(bool commit)
         #elif defined(RADIO_LR1121)
             SetRate(enumRatetoIndex(POWER_OUTPUT_VALUES_COUNT == 0 ? RATE_LORA_250HZ : RATE_LORA_200HZ));
         #elif defined(RADIO_SX128X)
+#ifdef FCC_MAX_EMISSIONS_TEST
+            SetRate(enumRatetoIndex(RATE_LORA_500HZ_FCC)); // Force FCC test rate (500Hz max emissions)
+#else
             SetRate(enumRatetoIndex(RATE_LORA_250HZ));
+#endif
         #endif
         SetPower(POWERMGNT::getDefaultPower());
 #if defined(PLATFORM_ESP32)
