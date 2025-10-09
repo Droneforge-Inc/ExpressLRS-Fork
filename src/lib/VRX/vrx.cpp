@@ -44,6 +44,12 @@ bool VRX::getScanComplete()
 uint8_t* VRX::getScanRssiData()
 {
     this->scanComplete = false;
+
+    if (GPIO_PIN_LED != UNDEF_PIN)
+    {
+        digitalWrite(GPIO_PIN_LED, LOW);
+    }
+
     return this->scanRssiData;
 }
 
@@ -60,8 +66,19 @@ bool VRX::isRssiStable() {
 }
 
 void VRX::updateRssi() {
+    // Take multiple readings and average them for better accuracy
+    const uint8_t numReadings = 5;
+    uint32_t rssiSum = 0;
+    
     analogRead(GPIO_PIN_VTX_RSSI); // Fake read to let ADC settle.
-    this->rssiRaw = analogRead(GPIO_PIN_VTX_RSSI);
+    
+    // Take multiple readings back-to-back (no delays)
+    for (uint8_t i = 0; i < numReadings; i++) {
+        rssiSum += analogRead(GPIO_PIN_VTX_RSSI);
+    }
+    
+    // Calculate average
+    this->rssiRaw = rssiSum / numReadings;
 
     this->rssi = constrain(
         map(
@@ -69,10 +86,10 @@ void VRX::updateRssi() {
             RSSI_MIN_VAL,
             RSSI_MAX_VAL,
             0,
-            100
+            255
         ),
         0,
-        100
+        255
     );
 
     if (this->rssiLogTimer.hasTicked()) {
@@ -114,6 +131,11 @@ void VRX::triggerScan(bool autoConnect)
 {
     this->shouldScan = true;
     this->scanAutoConnect = autoConnect;
+
+    if (GPIO_PIN_LED != UNDEF_PIN)
+    {
+        digitalWrite(GPIO_PIN_LED, HIGH);
+    }
 }
 
 void VRX::startScan()

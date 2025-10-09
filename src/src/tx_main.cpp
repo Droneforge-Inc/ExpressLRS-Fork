@@ -1352,11 +1352,11 @@ static void setupTarget()
     digitalWrite(GPIO_PIN_TCXO_EN, HIGH);
   }
 
-  // if (GPIO_PIN_LED != UNDEF_PIN)
-  // {
-  //   pinMode(GPIO_PIN_LED, OUTPUT);
-  //   digitalWrite(GPIO_PIN_LED, LOW);
-  // }
+  if (GPIO_PIN_LED != UNDEF_PIN)
+  {
+    pinMode(GPIO_PIN_LED, OUTPUT);
+    digitalWrite(GPIO_PIN_LED, LOW);
+  }
 
   setupSerial();
   setupTargetCommon();
