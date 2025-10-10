@@ -18,6 +18,9 @@ VRX::VRX() : rssiStableTimer(MIN_TUNE_TIME), rssiLogTimer(RECEIVER_LAST_DELAY), 
     this->isScanning = false;
     this->scanAutoConnect = false;
     this->scanComplete = false;
+    this->shouldConnect = false;
+    this->connectBand = BAND_Unknown;
+    this->connectChannel = 0;
     this->scanIndex = 0;
     this->bestRssiIndex = 0;
     this->originalChannelIndex = 0;
@@ -39,6 +42,11 @@ bool VRX::getIsScanning()
 bool VRX::getScanComplete()
 {
     return this->scanComplete;
+}
+
+bool VRX::getShouldConnect()
+{
+    return this->shouldConnect;
 }
 
 uint8_t* VRX::getScanRssiData()
@@ -157,6 +165,28 @@ void VRX::stopScan()
     this->isScanning = false;
     this->scanAutoConnect = false;
     setChannel(this->originalChannelIndex);
+}
+
+void VRX::triggerConnect(uint8_t band, uint8_t channel)
+{
+    this->shouldConnect = true;
+    this->connectBand = (VrxBand)band;
+    this->connectChannel = channel;
+}
+
+void VRX::connect() {
+    if (this->connectBand == BAND_Unknown) {
+        DBGLN("VRX: Invalid band");
+        return;
+    }
+
+    DBGLN("VRX: Connecting to band: %d, channel: %d", this->connectBand, this->connectChannel);
+    uint8_t index = this->connectBand + this->connectChannel - 1;
+    setChannel(index);
+
+    this->shouldConnect = false;
+    this->connectBand = BAND_Unknown;
+    this->connectChannel = 0;
 }
 
 void VRX::update() {

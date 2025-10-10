@@ -40,6 +40,11 @@ static int event()
     {
         vrx->startScan();
     }
+
+    if (vrx && vrx->getShouldConnect())
+    {
+        vrx->connect();
+    }
     
     return DURATION_IGNORE;
 }
@@ -54,6 +59,12 @@ device_t VRX_device = {
 void VrxTriggerScan(bool autoConnect)
 {
     vrx->triggerScan(autoConnect);
+    devicesTriggerEvent();
+}
+
+void VrxConnect(uint8_t band, uint8_t channel)
+{
+    vrx->triggerConnect(band, channel);
     devicesTriggerEvent();
 }
 

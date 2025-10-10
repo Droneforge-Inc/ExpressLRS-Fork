@@ -24,6 +24,10 @@ private:
     bool scanAutoConnect;
     bool scanComplete;
 
+    bool shouldConnect;
+    VrxBand connectBand;
+    uint8_t connectChannel;
+
     uint8_t scanIndex;
     uint8_t bestRssiIndex;
     uint8_t originalChannelIndex;
@@ -39,6 +43,7 @@ public:
     bool getShouldScan();
     bool getIsScanning();
     bool getScanComplete();
+    bool getShouldConnect();
     uint8_t* getScanRssiData();
 
     void setChannel(uint8_t channel);
@@ -48,6 +53,9 @@ public:
     void triggerScan(bool autoConnect);
     void startScan();
     void stopScan();
+
+    void triggerConnect(uint8_t band, uint8_t channel);
+    void connect();
 
     void setup();
     void update();
