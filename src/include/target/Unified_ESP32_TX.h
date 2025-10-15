@@ -197,6 +197,12 @@
 #define OPT_HAS_THERMAL_LM75A hardware_flag(HARDWARE_thermal_lm75a)
 #define OPT_HAS_THERMAL OPT_HAS_THERMAL_LM75A // If any of the sensors are present
 
+// VTX Channels
+#define GPIO_PIN_VTX_RSSI hardware_pin(HARDWARE_vtx_rssi)
+#define GPIO_PIN_VTX_BBS_DATA hardware_pin(HARDWARE_vtx_bbs_data)
+#define GPIO_PIN_VTX_BBS_CS hardware_pin(HARDWARE_vtx_bbs_cs)
+#define GPIO_PIN_VTX_BBS_SCK hardware_pin(HARDWARE_vtx_bbs_sck)
+
 /*
 // These are RX settings
 

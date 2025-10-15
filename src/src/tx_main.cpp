@@ -5,6 +5,8 @@
 #include "lua.h"
 #include "msp.h"
 #include "msptypes.h"
+// #include "vtxChannels.h"
+#include "vrx.h"
 #include "telemetry_protocol.h"
 #include "stubborn_receiver.h"
 #include "stubborn_sender.h"
@@ -18,6 +20,7 @@
 #include "devLUA.h"
 #include "devWIFI.h"
 #include "devButton.h"
+#include "devVRX.h"
 #include "devVTX.h"
 #include "devGsensor.h"
 #include "devThermal.h"
@@ -96,6 +99,9 @@ uint8_t CRSFinBuffer[CRSF_MAX_PACKET_LEN+1];
 
 device_affinity_t ui_devices[] = {
   {&Handset_device, 1},
+#ifdef HAS_VRX
+  {&VRX_device, 0},
+#endif
 #ifdef HAS_LED
   {&LED_device, 0},
 #endif
@@ -1338,11 +1344,14 @@ static void setupTarget()
     pinMode(GPIO_PIN_ANT_CTRL_COMPL, OUTPUT);
     digitalWrite(GPIO_PIN_ANT_CTRL_COMPL, !diversityAntennaState);
   }
+
+  // Enable TCXO for LoRa 128x radios
   if (GPIO_PIN_TCXO_EN != UNDEF_PIN)
   {
     pinMode(GPIO_PIN_TCXO_EN, OUTPUT);
     digitalWrite(GPIO_PIN_TCXO_EN, HIGH);
   }
+
   // if (GPIO_PIN_LED != UNDEF_PIN)
   // {
   //   pinMode(GPIO_PIN_LED, OUTPUT);

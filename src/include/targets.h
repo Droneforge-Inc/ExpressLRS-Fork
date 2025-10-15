@@ -206,6 +206,18 @@
 #define GPIO_PIN_SPI_VTX_NSS UNDEF_PIN
 #endif
 
+#ifndef GPIO_PIN_VTX_RSSI
+#define GPIO_PIN_VTX_RSSI UNDEF_PIN
+#endif
+#ifndef GPIO_PIN_VTX_BBS_DATA
+#define GPIO_PIN_VTX_BBS_DATA UNDEF_PIN
+#endif
+#ifndef GPIO_PIN_VTX_BBS_CS
+#define GPIO_PIN_VTX_BBS_CS UNDEF_PIN
+#endif
+#ifndef GPIO_PIN_VTX_BBS_SCK
+#define GPIO_PIN_VTX_BBS_SCK UNDEF_PIN
+#endif
 
 #if defined(TARGET_TX)
 #if defined(PLATFORM_ESP32)

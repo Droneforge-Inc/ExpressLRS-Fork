@@ -139,6 +139,10 @@ static const struct {
     {HARDWARE_vtx_amp_vpd_100mW, "vtx_amp_vpd_100mW", ARRAY},
     {HARDWARE_vtx_amp_pwm_25mW, "vtx_amp_pwm_25mW", ARRAY},
     {HARDWARE_vtx_amp_pwm_100mW, "vtx_amp_pwm_100mW", ARRAY},
+    {HARDWARE_vtx_rssi, "vtx_rssi", INT},
+    {HARDWARE_vtx_bbs_data, "vtx_bbs_data", INT},
+    {HARDWARE_vtx_bbs_cs, "vtx_bbs_cs", INT},
+    {HARDWARE_vtx_bbs_sck, "vtx_bbs_sck", INT},
 };
 
 typedef union {

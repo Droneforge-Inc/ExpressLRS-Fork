@@ -3,6 +3,7 @@
 #include "FIFO.h"
 #include "logging.h"
 #include "helpers.h"
+#include "devVRX.h"
 
 #if defined(CRSF_TX_MODULE) && !defined(UNIT_TEST)
 #include "device.h"
@@ -360,6 +361,37 @@ bool CRSFHandset::processInternalCrsfPackage(uint8_t *package)
             rtcModelId = modelId;
             #endif
             if (RecvModelUpdate) RecvModelUpdate();
+        }
+        else if (packetType == CRSF_FRAMETYPE_COMMAND && header->payload[0] == CRSF_COMMAND_SUBCMD_NIMBUS_SDK)
+        {
+            switch (header->payload[1])
+            {
+                case CRSF_COMMAND_NIMBUS_VRX_SCAN:
+                {
+                    uint8_t autoConnect = header->payload[2];
+                    DBGLN("Nimbus VRX Scan. AutoConnect: %d", !!autoConnect);
+
+                    #ifdef HAS_VRX
+                    VrxTriggerScan(!!autoConnect);
+                    #endif
+                    break;
+                }
+                case CRSF_COMMAND_NIMBUS_VRX_CONNECT:
+                {
+                    uint8_t band = header->payload[2];
+                    uint8_t channel = header->payload[3];
+                    DBGLN("Nimbus VRX Connect. Band: %d, Channel: %d", band, channel);
+
+                    #ifdef HAS_VRX
+                    VrxConnect(band, channel);
+                    #endif
+                    break;
+                }
+                default:
+                    DBGLN("Nimbus VRX Unknown command: %d", header->payload[1]);
+                    break;
+            }
+            
         }
         else
         {
