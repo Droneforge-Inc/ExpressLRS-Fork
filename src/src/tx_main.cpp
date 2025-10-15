@@ -1352,11 +1352,11 @@ static void setupTarget()
     digitalWrite(GPIO_PIN_TCXO_EN, HIGH);
   }
 
-  if (GPIO_PIN_LED != UNDEF_PIN)
-  {
-    pinMode(GPIO_PIN_LED, OUTPUT);
-    digitalWrite(GPIO_PIN_LED, LOW);
-  }
+  // if (GPIO_PIN_LED != UNDEF_PIN)
+  // {
+  //   pinMode(GPIO_PIN_LED, OUTPUT);
+  //   digitalWrite(GPIO_PIN_LED, LOW);
+  // }
 
   setupSerial();
   setupTargetCommon();
@@ -1678,20 +1678,4 @@ void loop()
         MspSender.SetDataToTransmit(nextPayload, nextPlayloadSize);
     }
   }
-
-// #if defined(USE_VTX_CHANNELS)
-//   if (upPressed)
-//   {
-//     vtxChannel = (vtxChannel + 1) % 8;
-//     upPressed = false;
-//   }
-
-//   if (downPressed)
-//   {
-//     vtxChannel = (vtxChannel - 1 + 8) % 8;
-//     downPressed = false;
-//   }
-
-//   setVtxChannel(vtxChannel);
-// #endif
 }

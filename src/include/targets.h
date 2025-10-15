@@ -206,9 +206,6 @@
 #define GPIO_PIN_SPI_VTX_NSS UNDEF_PIN
 #endif
 
-// #if defined(GPIO_PIN_VTX_CH_1) && defined(GPIO_PIN_VTX_CH_2) && defined(GPIO_PIN_VTX_CH_3)
-// #define USE_VTX_CHANNELS
-// #endif
 #ifndef GPIO_PIN_VTX_RSSI
 #define GPIO_PIN_VTX_RSSI UNDEF_PIN
 #endif
@@ -221,22 +218,6 @@
 #ifndef GPIO_PIN_VTX_BBS_SCK
 #define GPIO_PIN_VTX_BBS_SCK UNDEF_PIN
 #endif
-// #ifndef GPIO_PIN_VTX_CH_1
-// #define GPIO_PIN_VTX_CH_1 UNDEF_PIN
-// #endif
-// #ifndef GPIO_PIN_VTX_CH_2
-// #define GPIO_PIN_VTX_CH_2 UNDEF_PIN
-// #endif
-// #ifndef GPIO_PIN_VTX_CH_3
-// #define GPIO_PIN_VTX_CH_3 UNDEF_PIN
-// #endif
-// #ifndef GPIO_PIN_VTX_CH_UP
-// #define GPIO_PIN_VTX_CH_UP UNDEF_PIN
-// #endif
-// #ifndef GPIO_PIN_VTX_CH_DOWN
-// #define GPIO_PIN_VTX_CH_DOWN UNDEF_PIN
-// #endif
-
 
 #if defined(TARGET_TX)
 #if defined(PLATFORM_ESP32)
