@@ -10,7 +10,7 @@
 #include "vrx_timer.h"
 
 
-VRX::VRX() : rssiStableTimer(MIN_TUNE_TIME), rssiLogTimer(RECEIVER_LAST_DELAY), serialLogTimer(25) {
+VRX::VRX() : rssiStableTimer(MIN_TUNE_TIME), rssiLogTimer(RECEIVER_LAST_DELAY), serialLogTimer(1000) {
     this->activeChannel = 0;
     this->rssi = 0;
     this->rssiRaw = 0;

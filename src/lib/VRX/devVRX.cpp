@@ -1,3 +1,4 @@
+#ifdef HAS_VRX
 #include "devVRX.h"
 #include "vrx.h"
 #include "device.h"
@@ -93,3 +94,4 @@ void sendVrxTopChannelsFrame(uint8_t* scanResults)
     // Send the frame
     handset->sendTelemetryToTX(buffer);
 }
+#endif

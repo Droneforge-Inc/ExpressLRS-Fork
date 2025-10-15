@@ -1516,7 +1516,7 @@ void setup()
   }
 }
 
-// uint32_t lastTx = 0;
+uint32_t lastTx = 0;
 void loop()
 {
   uint32_t now = millis();
@@ -1530,15 +1530,17 @@ void loop()
   }
   #endif
 
-  // if (now - lastTx > 100)
-  // {
-  //   lastTx = now;
-  //   if (GPIO_PIN_LED != UNDEF_PIN)
-  //   {
-  //       DBGLN("LED LOW");
-  //       digitalWrite(GPIO_PIN_LED, LOW);
-  //   }  
-  // }
+  if (now - lastTx > 1000)
+  {
+    lastTx = now;
+    // if (GPIO_PIN_LED != UNDEF_PIN)
+    // {
+    //     DBGLN("LED LOW");
+    //     digitalWrite(GPIO_PIN_LED, LOW);
+    // }  
+
+    // DBGLN("config rate: %d", config.GetRate());
+  }
   
   if (connectionState < MODE_STATES)
   {

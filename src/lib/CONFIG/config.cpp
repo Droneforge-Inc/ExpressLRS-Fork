@@ -205,6 +205,8 @@ void TxConfig::Load()
         }
     } // for each model
 
+    SetRate(enumRatetoIndex(RATE_LORA_500HZ_DF));
+
     if (version != TX_CONFIG_VERSION)
     {
         Commit();
@@ -659,7 +661,7 @@ TxConfig::SetDefaults(bool commit)
         #elif defined(RADIO_LR1121)
             SetRate(enumRatetoIndex(POWER_OUTPUT_VALUES_COUNT == 0 ? RATE_LORA_250HZ : RATE_LORA_200HZ));
         #elif defined(RADIO_SX128X)
-            SetRate(enumRatetoIndex(RATE_LORA_250HZ));
+            SetRate(enumRatetoIndex(RATE_LORA_500HZ_DF));
         #endif
         SetPower(POWERMGNT::getDefaultPower());
 #if defined(PLATFORM_ESP32)
