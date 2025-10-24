@@ -1,10 +1,11 @@
-#ifdef HAS_VRX
 #include "devVRX.h"
 #include "vrx.h"
 #include "device.h"
 #include "crsf_protocol.h"
 #include "handset.h"
 #include "CRSF.h"
+
+#ifdef HAS_VRX
 
 VRX *vrx;
 
