@@ -3,7 +3,8 @@
 #include "targets.h"
 #include "device.h"
 
-#if defined(GPIO_PIN_VTX_BBS_DATA) \
+#if defined(TARGET_TX) \
+    && defined(GPIO_PIN_VTX_BBS_DATA) \
     && defined(GPIO_PIN_VTX_BBS_CS) \
     && defined(GPIO_PIN_VTX_BBS_SCK)
 
