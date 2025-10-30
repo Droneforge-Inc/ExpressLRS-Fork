@@ -11,6 +11,9 @@
 #define RSSI_MIN_VAL 300 
 #define RSSI_MAX_VAL 1200
 
+#define NUM_RSSI_SAMPLES 3
+#define CHANNEL_SWITCH_DELAY 50
+
 class VRX {
 private:
     uint8_t activeChannel;
@@ -18,6 +21,10 @@ private:
     uint8_t rssi;
     uint16_t rssiRaw;
     uint8_t rssiLast[RECEIVER_LAST_DATA_SIZE];
+    
+    // RSSI sampling state
+    uint16_t rssiSamples[NUM_RSSI_SAMPLES];
+    uint8_t rssiSampleCount;
     
     bool shouldScan;
     bool isScanning;
@@ -33,6 +40,7 @@ private:
     uint8_t originalChannelIndex;
     uint8_t scanRssiData[CHANNELS_SIZE];
 
+    VrxTimer rssiSampleTimer;
     VrxTimer rssiStableTimer;
     VrxTimer rssiLogTimer;
     VrxTimer serialLogTimer;
@@ -47,7 +55,7 @@ public:
     uint8_t* getScanRssiData();
 
     void setChannel(uint8_t channel);
-    void updateRssi();
+    bool updateRssi(bool useAveraging);
     bool isRssiStable();
     
     void triggerScan(bool autoConnect);

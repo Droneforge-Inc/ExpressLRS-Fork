@@ -10,10 +10,11 @@
 #include "vrx_timer.h"
 
 
-VRX::VRX() : rssiStableTimer(MIN_TUNE_TIME), rssiLogTimer(RECEIVER_LAST_DELAY), serialLogTimer(1000) {
+VRX::VRX() : rssiSampleTimer(CHANNEL_SWITCH_DELAY), rssiStableTimer(MIN_TUNE_TIME), rssiLogTimer(RECEIVER_LAST_DELAY), serialLogTimer(1000) {
     this->activeChannel = 0;
     this->rssi = 0;
     this->rssiRaw = 0;
+    this->rssiSampleCount = 0;
     this->shouldScan = false;
     this->isScanning = false;
     this->scanAutoConnect = false;
@@ -27,6 +28,7 @@ VRX::VRX() : rssiStableTimer(MIN_TUNE_TIME), rssiLogTimer(RECEIVER_LAST_DELAY), 
     
     memset(this->rssiLast, 0, sizeof(this->rssiLast));
     memset(this->scanRssiData, 0, sizeof(this->scanRssiData));
+    memset(this->rssiSamples, 0, sizeof(this->rssiSamples));
 }
 
 bool VRX::getShouldScan()
@@ -67,48 +69,87 @@ void VRX::setChannel(uint8_t channel)
 
     this->rssiStableTimer.reset();
     this->activeChannel = channel;
+    this->rssiSampleCount = 0; // Reset sample count when changing channels
 }
 
 bool VRX::isRssiStable() {
     return this->rssiStableTimer.hasTicked();
 }
 
-void VRX::updateRssi() {
-    // Take multiple readings and average them for better accuracy
-    const uint8_t numReadings = 5;
-    uint32_t rssiSum = 0;
-    
-    analogRead(GPIO_PIN_VTX_RSSI); // Fake read to let ADC settle.
-    
-    // Take multiple readings back-to-back (no delays)
-    for (uint8_t i = 0; i < numReadings; i++) {
-        rssiSum += analogRead(GPIO_PIN_VTX_RSSI);
-    }
-    
-    // Calculate average
-    this->rssiRaw = rssiSum / numReadings;
-
-    this->rssi = constrain(
-        map(
-            this->rssiRaw,
-            RSSI_MIN_VAL,
-            RSSI_MAX_VAL,
+bool VRX::updateRssi(bool useAveraging) {
+    if (!useAveraging) {
+        // Single reading mode
+        analogRead(GPIO_PIN_VTX_RSSI); // Fake read to let ADC settle
+        this->rssiRaw = analogRead(GPIO_PIN_VTX_RSSI);
+        
+        this->rssi = constrain(
+            map(
+                this->rssiRaw,
+                RSSI_MIN_VAL,
+                RSSI_MAX_VAL,
+                0,
+                255
+            ),
             0,
             255
-        ),
-        0,
-        255
-    );
+        );
 
-    if (this->rssiLogTimer.hasTicked()) {
-        for (uint8_t i = 0; i < RECEIVER_LAST_DATA_SIZE - 1; i++) {
-            this->rssiLast[i] = this->rssiLast[i + 1];
+        if (this->rssiLogTimer.hasTicked()) {
+            for (uint8_t i = 0; i < RECEIVER_LAST_DATA_SIZE - 1; i++) {
+                this->rssiLast[i] = this->rssiLast[i + 1];
+            }
+
+            this->rssiLast[RECEIVER_LAST_DATA_SIZE - 1] = this->rssi;
+            this->rssiLogTimer.reset();
         }
 
-        this->rssiLast[RECEIVER_LAST_DATA_SIZE - 1] = this->rssi;
-        this->rssiLogTimer.reset();
+        return true;
     }
     
+    if (rssiSampleCount == 0 && !rssiSampleTimer.hasTicked()) {
+        return false;
+    }
+
+    analogRead(GPIO_PIN_VTX_RSSI); // Fake read to let ADC settle on first sample
+    
+    // Store the current sample
+    this->rssiSamples[this->rssiSampleCount] = analogRead(GPIO_PIN_VTX_RSSI);
+    this->rssiSampleCount++;
+    
+    // Only calculate average when we have all samples
+    if (this->rssiSampleCount >= NUM_RSSI_SAMPLES) {
+        uint32_t rssiSum = 0;
+        for (uint8_t i = 0; i < NUM_RSSI_SAMPLES; i++) {
+            rssiSum += this->rssiSamples[i];
+        }
+        
+        // Calculate average
+        this->rssiRaw = rssiSum / NUM_RSSI_SAMPLES;
+        this->rssiSampleCount = 0; // Reset for next averaging cycle
+        
+        this->rssi = constrain(
+            map(
+                this->rssiRaw,
+                RSSI_MIN_VAL,
+                RSSI_MAX_VAL,
+                0,
+                255
+            ),
+            0,
+            255
+        );
+
+        if (this->rssiLogTimer.hasTicked()) {
+            for (uint8_t i = 0; i < RECEIVER_LAST_DATA_SIZE - 1; i++) {
+                this->rssiLast[i] = this->rssiLast[i + 1];
+            }
+
+            this->rssiLast[RECEIVER_LAST_DATA_SIZE - 1] = this->rssi;
+            this->rssiLogTimer.reset();
+        }
+    }
+
+    return true;
 }
 
 void VRX::setup() {
@@ -157,6 +198,7 @@ void VRX::startScan()
     this->originalChannelIndex = this->activeChannel;
     memset(this->scanRssiData, 0, sizeof(this->scanRssiData));
     setChannel(VrxChannels::getOrderedIndex(this->scanIndex));
+    this->rssiSampleTimer.reset();
 }
 
 void VRX::stopScan()
@@ -191,20 +233,22 @@ void VRX::connect() {
 
 void VRX::update() {
     if (this->rssiStableTimer.hasTicked()) {
-        updateRssi();
+        auto didUpdate = updateRssi(this->isScanning);
         writeSerialData();
         
-        // Handle scan logic during update
-        if (this->isScanning) {
+        // Handle scan logic during update - only proceed when we have a complete RSSI reading
+        if (this->isScanning && this->rssiSampleCount == 0 && didUpdate) { // rssiSampleCount == 0 means we just completed averaging
             this->scanRssiData[this->scanIndex] = this->rssi;
+            auto num = VrxChannels::getOrderedIndex(this->scanIndex);
+            DBGLN("VRX: band: %d, channel: %d, RSSI raw: %d, rssi: %d, freq: %d", (num / 8) + 1, num % 8 + 1, this->rssiRaw, this->rssi, VrxChannels::getFrequency(num));
             if (this->rssi > this->scanRssiData[this->bestRssiIndex]) {
                 this->bestRssiIndex = this->scanIndex;
             }
 
             this->scanIndex = (this->scanIndex + 1) % CHANNELS_SIZE;
-            setChannel(VrxChannels::getOrderedIndex(this->scanIndex));
-
+            
             if (this->scanIndex == 0) {
+                // Scan complete
                 if (this->scanAutoConnect) {
                     setChannel(VrxChannels::getOrderedIndex(this->bestRssiIndex));
                 } else {
@@ -215,19 +259,23 @@ void VRX::update() {
                 this->scanAutoConnect = false;
                 this->scanComplete = true;
                 
-                DBGLN("VRX: Best RSSI index: %d", this->bestRssiIndex);
+                auto bestNum = VrxChannels::getOrderedIndex(this->bestRssiIndex);
+                DBGLN("VRX: Best band: %d, channel: %d, RSSI: %d, freq: %d", (bestNum / 8) + 1, bestNum % 8 + 1, this->scanRssiData[this->bestRssiIndex], VrxChannels::getFrequency(bestNum));
                 DBGLN("VRX: Scan complete");
+            } else {
+                setChannel(VrxChannels::getOrderedIndex(this->scanIndex));
+                this->rssiSampleTimer.reset();
             }
         }
     }
 }
 
 void VRX::writeSerialData() {
-    if (this->serialLogTimer.hasTicked()) {
-        DBGLN("Active channel: %d", this->activeChannel);
-        DBGLN("RSSI: %d", this->rssi);
-        DBGLN("RSSI raw: %d", this->rssiRaw);
-        DBGLN("RSSI last: %d", this->rssiLast[RECEIVER_LAST_DATA_SIZE - 1]);
-        this->serialLogTimer.reset();
-    }
+    // if (this->serialLogTimer.hasTicked()) {
+    //     DBGLN("Active channel: %d", this->activeChannel);
+    //     DBGLN("RSSI: %d", this->rssi);
+    //     DBGLN("RSSI raw: %d", this->rssiRaw);
+    //     DBGLN("RSSI last: %d", this->rssiLast[RECEIVER_LAST_DATA_SIZE - 1]);
+    //     this->serialLogTimer.reset();
+    // }
 }
