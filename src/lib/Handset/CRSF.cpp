@@ -1,7 +1,7 @@
 #include "CRSF.h"
 
-#include "common.h"
 #include "FIFO.h"
+#include "common.h"
 
 elrsLinkStatistics_t CRSF::LinkStatistics;
 GENERIC_CRC8 crsf_crc(CRSF_CRC_POLY);
@@ -11,7 +11,6 @@ uint8_t CRSF::MspDataLength = 0;
 
 static const auto MSP_SERIAL_OUT_FIFO_SIZE = 256U;
 static FIFO<MSP_SERIAL_OUT_FIFO_SIZE> MspWriteFIFO;
-
 
 /***
  * @brief: Convert `version` (string) to a integer version representation
@@ -26,6 +25,15 @@ uint32_t CRSF::VersionStrToU32(const char *verStr)
     uint8_t accumulator = 0;
     char c;
     bool trailing_data = false;
+    uint8_t prefix = 0;
+
+    // Check for "DF-" prefix
+    if (strlen(verStr) >= 4 && verStr[0] == 'D' && verStr[1] == 'F' && verStr[2] == '-')
+    {
+        prefix = 0xDF;
+        verStr += 3; // Skip "DF-"
+    }
+
     while ((c = *verStr))
     {
         ++verStr;
@@ -58,20 +66,22 @@ uint32_t CRSF::VersionStrToU32(const char *verStr)
     {
         retVal = OTA_VERSION_ID << 16;
     }
+    // Apply prefix byte at MSB position
+    retVal |= (uint32_t)prefix << 24;
 #endif
     return retVal;
 }
 
 void CRSF::GetDeviceInformation(uint8_t *frame, uint8_t fieldCount)
 {
-    const uint8_t size = strlen(device_name)+1;
+    const uint8_t size = strlen(device_name) + 1;
     auto *device = (deviceInformationPacket_t *)(frame + sizeof(crsf_ext_header_t) + size);
     // Packet starts with device name
     memcpy(frame + sizeof(crsf_ext_header_t), device_name, size);
     // Followed by the device
-    device->serialNo = htobe32(0x454C5253); // ['E', 'L', 'R', 'S'], seen [0x00, 0x0a, 0xe7, 0xc6] // "Serial 177-714694" (value is 714694)
-    device->hardwareVer = 0; // unused currently by us, seen [ 0x00, 0x0b, 0x10, 0x01 ] // "Hardware: V 1.01" / "Bootloader: V 3.06"
-    device->softwareVer = htobe32(VersionStrToU32(version)); // seen [ 0x00, 0x00, 0x05, 0x0f ] // "Firmware: V 5.15"
+    device->serialNo = htobe32(0x454C5253);                           // ['E', 'L', 'R', 'S'], seen [0x00, 0x0a, 0xe7, 0xc6] // "Serial 177-714694" (value is 714694)
+    device->hardwareVer = htobe32(VersionStrToU32(hardware_version)); // unused currently by us, seen [ 0x00, 0x0b, 0x10, 0x01 ] // "Hardware: V 1.01" / "Bootloader: V 3.06"
+    device->softwareVer = htobe32(VersionStrToU32(version));          // seen [ 0x00, 0x00, 0x05, 0x0f ] // "Firmware: V 5.15"
     device->fieldCnt = fieldCount;
     device->parameterVersion = 0;
 }
@@ -79,8 +89,8 @@ void CRSF::GetDeviceInformation(uint8_t *frame, uint8_t fieldCount)
 void CRSF::SetMspV2Request(uint8_t *frame, uint16_t function, uint8_t *payload, uint8_t payloadLength)
 {
     auto *packet = (uint8_t *)(frame + sizeof(crsf_ext_header_t));
-    packet[0] = 0x50;          // no error, version 2, beginning of the frame, first frame (0)
-    packet[1] = 0;             // flags
+    packet[0] = 0x50; // no error, version 2, beginning of the frame, first frame (0)
+    packet[1] = 0;    // flags
     packet[2] = function & 0xFF;
     packet[3] = (function >> 8) & 0xFF;
     packet[4] = payloadLength & 0xFF;
@@ -107,7 +117,6 @@ void CRSF::SetExtendedHeaderAndCrc(uint8_t *frame, crsf_frame_type_e frameType, 
     header->orig_addr = senderAddr;
     SetHeaderAndCrc(frame, frameType, frameSize, destAddr);
 }
-
 
 void CRSF::GetMspMessage(uint8_t **data, uint8_t *len)
 {
@@ -140,7 +149,7 @@ void CRSF::UnlockMspMessage()
     }
 }
 
-void ICACHE_RAM_ATTR CRSF::AddMspMessage(mspPacket_t* packet, uint8_t destination)
+void ICACHE_RAM_ATTR CRSF::AddMspMessage(mspPacket_t *packet, uint8_t destination)
 {
     if (packet->payloadSize > ENCAPSULATED_MSP_MAX_PAYLOAD_SIZE)
     {
@@ -151,11 +160,11 @@ void ICACHE_RAM_ATTR CRSF::AddMspMessage(mspPacket_t* packet, uint8_t destinatio
     uint8_t outBuffer[ENCAPSULATED_MSP_MAX_FRAME_LEN + CRSF_FRAME_LENGTH_EXT_TYPE_CRC + CRSF_FRAME_NOT_COUNTED_BYTES];
 
     // CRSF extended frame header
-    outBuffer[0] = CRSF_ADDRESS_BROADCAST;                                      // address
+    outBuffer[0] = CRSF_ADDRESS_BROADCAST;                                                                 // address
     outBuffer[1] = packet->payloadSize + ENCAPSULATED_MSP_HEADER_CRC_LEN + CRSF_FRAME_LENGTH_EXT_TYPE_CRC; // length
-    outBuffer[2] = CRSF_FRAMETYPE_MSP_WRITE;                                    // packet type
-    outBuffer[3] = destination;                                                 // destination
-    outBuffer[4] = CRSF_ADDRESS_RADIO_TRANSMITTER;                              // origin
+    outBuffer[2] = CRSF_FRAMETYPE_MSP_WRITE;                                                               // packet type
+    outBuffer[3] = destination;                                                                            // destination
+    outBuffer[4] = CRSF_ADDRESS_RADIO_TRANSMITTER;                                                         // origin
 
     // Encapsulated MSP payload
     outBuffer[5] = 0x30;                // header
@@ -174,7 +183,7 @@ void ICACHE_RAM_ATTR CRSF::AddMspMessage(mspPacket_t* packet, uint8_t destinatio
     AddMspMessage(totalBufferLen, outBuffer);
 }
 
-void ICACHE_RAM_ATTR CRSF::AddMspMessage(const uint8_t length, uint8_t* data)
+void ICACHE_RAM_ATTR CRSF::AddMspMessage(const uint8_t length, uint8_t *data)
 {
     if (length > ELRS_MSP_BUFFER)
     {

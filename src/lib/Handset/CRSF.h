@@ -2,9 +2,9 @@
 #define H_CRSF
 
 #include "crsf_protocol.h"
-#include "telemetry_protocol.h"
 #include "msp.h"
 #include "msptypes.h"
+#include "telemetry_protocol.h"
 
 class CRSF
 {

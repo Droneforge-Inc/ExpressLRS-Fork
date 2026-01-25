@@ -1,5 +1,5 @@
-#include "targets.h"
 #include "options.h"
+#include "targets.h"
 
 #include "logging.h"
 
@@ -7,11 +7,19 @@
 #define STR(macro) QUOTE(macro)
 const unsigned char target_name[] = "\xBE\xEF\xCA\xFE" STR(TARGET_NAME);
 const uint8_t target_name_size = sizeof(target_name);
-const char commit[] {LATEST_COMMIT, 0};
+const char commit[]{LATEST_COMMIT, 0};
 #if defined(UNIT_TEST)
 const char version[] = "1.2.3";
+#elif defined(FIRMWARE_VERSION_DF)
+const char version[] = FIRMWARE_VERSION_DF;
 #else
 const char version[] = {LATEST_VERSION, 0};
+#endif
+
+#if defined(HARDWARE_VERSION_DF)
+const char hardware_version[] = HARDWARE_VERSION_DF;
+#else
+const char hardware_version[] = "0";
 #endif
 
 #if defined(TARGET_TX)
@@ -32,37 +40,37 @@ const char *wifi_ap_address = "10.0.0.1";
 #endif
 
 const char device_name[] = DEVICE_NAME;
-const char *product_name = (const char *)(target_name+4);
+const char *product_name = (const char *)(target_name + 4);
 
-__attribute__ ((used)) static firmware_options_t flashedOptions = {
+__attribute__((used)) static firmware_options_t flashedOptions = {
     ._magic_ = {0xBE, 0xEF, 0xBA, 0xBE, 0xCA, 0xFE, 0xF0, 0x0D},
     ._version_ = 3,
 #if defined(Regulatory_Domain_ISM_2400)
     .domain = 0,
 #else
-    #if defined(Regulatory_Domain_AU_915)
+#if defined(Regulatory_Domain_AU_915)
     .domain = 0,
-    #elif defined(Regulatory_Domain_FCC_915)
+#elif defined(Regulatory_Domain_FCC_915)
     .domain = 1,
-    #elif defined(Regulatory_Domain_EU_868)
+#elif defined(Regulatory_Domain_EU_868)
     .domain = 2,
-    #elif defined(Regulatory_Domain_IN_866)
+#elif defined(Regulatory_Domain_IN_866)
     .domain = 3,
-    #elif defined(Regulatory_Domain_AU_433)
+#elif defined(Regulatory_Domain_AU_433)
     .domain = 4,
-    #elif defined(Regulatory_Domain_EU_433)
+#elif defined(Regulatory_Domain_EU_433)
     .domain = 5,
-    #elif defined(Regulatory_Domain_US_433)
+#elif defined(Regulatory_Domain_US_433)
     .domain = 6,
-    #elif defined(Regulatory_Domain_US_433_WIDE)
+#elif defined(Regulatory_Domain_US_433_WIDE)
     .domain = 7,
-    #else
-    #error No regulatory domain defined, please define one in user_defines.txt
-    #endif
+#else
+#error No regulatory domain defined, please define one in user_defines.txt
+#endif
 #endif
 #if defined(MY_UID)
     .hasUID = true,
-    .uid = { MY_UID },
+    .uid = {MY_UID},
 #else
     .hasUID = false,
     .uid = {},
@@ -78,21 +86,21 @@ __attribute__ ((used)) static firmware_options_t flashedOptions = {
     .fan_min_runtime = 30,
 #endif
 #if defined(PLATFORM_ESP32) || defined(PLATFORM_ESP8266)
-    #if defined(AUTO_WIFI_ON_INTERVAL)
-        .wifi_auto_on_interval = AUTO_WIFI_ON_INTERVAL * 1000,
-    #else
-        .wifi_auto_on_interval = -1,
-    #endif
-    #if defined(HOME_WIFI_SSID)
-        .home_wifi_ssid = {HOME_WIFI_SSID},
-    #else
-        .home_wifi_ssid = {},
-    #endif
-    #if defined(HOME_WIFI_PASSWORD)
-        .home_wifi_password = {HOME_WIFI_PASSWORD},
-    #else
-        .home_wifi_password = {},
-    #endif
+#if defined(AUTO_WIFI_ON_INTERVAL)
+    .wifi_auto_on_interval = AUTO_WIFI_ON_INTERVAL * 1000,
+#else
+    .wifi_auto_on_interval = -1,
+#endif
+#if defined(HOME_WIFI_SSID)
+    .home_wifi_ssid = {HOME_WIFI_SSID},
+#else
+    .home_wifi_ssid = {},
+#endif
+#if defined(HOME_WIFI_PASSWORD)
+    .home_wifi_password = {HOME_WIFI_PASSWORD},
+#else
+    .home_wifi_password = {},
+#endif
 #endif
 #if defined(TARGET_RX)
 #if defined(USE_AIRPORT_AT_BAUD)
@@ -141,22 +149,22 @@ __attribute__ ((used)) static firmware_options_t flashedOptions = {
     .is_airport = false,
 #endif
 #if defined(GPIO_PIN_BUZZER)
-    #if defined(DISABLE_ALL_BEEPS)
+#if defined(DISABLE_ALL_BEEPS)
     .buzzer_mode = buzzerQuiet,
     .buzzer_melody = {},
-    #elif defined(JUST_BEEP_ONCE)
+#elif defined(JUST_BEEP_ONCE)
     .buzzer_mode = buzzerOne,
     .buzzer_melody = {},
-    #elif defined(DISABLE_STARTUP_BEEP)
+#elif defined(DISABLE_STARTUP_BEEP)
     .buzzer_mode = buzzerTune,
     .buzzer_melody = {{400, 200}, {480, 200}},
-    #elif defined(MY_STARTUP_MELODY)
+#elif defined(MY_STARTUP_MELODY)
     .buzzer_mode = buzzerTune,
     .buzzer_melody = MY_STARTUP_MELODY_ARR,
-    #else
+#else
     .buzzer_mode = buzzerTune,
     .buzzer_melody = {{659, 300}, {659, 300}, {523, 100}, {659, 300}, {783, 550}, {392, 575}},
-    #endif
+#endif
 #endif
 #if defined(USE_AIRPORT_AT_BAUD)
     .uart_baud = USE_AIRPORT_AT_BAUD,
@@ -188,12 +196,12 @@ bool options_init()
 #include <SPIFFS.h>
 #endif
 #if defined(PLATFORM_ESP32)
-#include <esp_partition.h>
 #include "esp_ota_ops.h"
+#include <esp_partition.h>
 #endif
 
-char product_name[ELRSOPTS_PRODUCTNAME_SIZE+1];
-char device_name[ELRSOPTS_DEVICENAME_SIZE+1];
+char product_name[ELRSOPTS_PRODUCTNAME_SIZE + 1];
+char device_name[ELRSOPTS_DEVICENAME_SIZE + 1];
 uint32_t logo_image;
 
 firmware_options_t firmwareOptions;
@@ -202,7 +210,7 @@ firmware_options_t firmwareOptions;
 extern bool hardware_init(EspFlashStream &strmFlash);
 
 static StreamString builtinOptions;
-String& getOptions()
+String &getOptions()
 {
     return builtinOptions;
 }
@@ -225,15 +233,15 @@ void saveOptions(Stream &stream, bool customised)
         doc["wifi-ssid"] = firmwareOptions.home_wifi_ssid;
         doc["wifi-password"] = firmwareOptions.home_wifi_password;
     }
-    #if defined(TARGET_UNIFIED_TX)
+#if defined(TARGET_UNIFIED_TX)
     doc["tlm-interval"] = firmwareOptions.tlm_report_interval;
     doc["fan-runtime"] = firmwareOptions.fan_min_runtime;
     doc["unlock-higher-power"] = firmwareOptions.unlock_higher_power;
     doc["airport-uart-baud"] = firmwareOptions.uart_baud;
-    #else
+#else
     doc["rcvr-uart-baud"] = firmwareOptions.uart_baud;
     doc["lock-on-first-connection"] = firmwareOptions.lock_on_first_connection;
-    #endif
+#endif
     doc["is-airport"] = firmwareOptions.is_airport;
     doc["domain"] = firmwareOptions.domain;
     doc["customised"] = customised;
@@ -326,27 +334,27 @@ static void options_LoadFromFlashOrFile(EspFlashStream &strmFlash)
     firmwareOptions.wifi_auto_on_interval = wifiInterval == -1 ? -1 : wifiInterval * 1000;
     strlcpy(firmwareOptions.home_wifi_ssid, doc["wifi-ssid"] | "", sizeof(firmwareOptions.home_wifi_ssid));
     strlcpy(firmwareOptions.home_wifi_password, doc["wifi-password"] | "", sizeof(firmwareOptions.home_wifi_password));
-    #if defined(TARGET_UNIFIED_TX)
+#if defined(TARGET_UNIFIED_TX)
     firmwareOptions.tlm_report_interval = doc["tlm-interval"] | 240U;
     firmwareOptions.fan_min_runtime = doc["fan-runtime"] | 30U;
     firmwareOptions.unlock_higher_power = doc["unlock-higher-power"] | false;
-    #if defined(USE_AIRPORT_AT_BAUD)
+#if defined(USE_AIRPORT_AT_BAUD)
     firmwareOptions.uart_baud = doc["airport-uart-baud"] | USE_AIRPORT_AT_BAUD;
     firmwareOptions.is_airport = doc["is-airport"] | true;
-    #else
+#else
     firmwareOptions.uart_baud = doc["airport-uart-baud"] | 460800;
     firmwareOptions.is_airport = doc["is-airport"] | false;
-    #endif
-    #else
-    #if defined(USE_AIRPORT_AT_BAUD)
+#endif
+#else
+#if defined(USE_AIRPORT_AT_BAUD)
     firmwareOptions.uart_baud = doc["rcvr-uart-baud"] | USE_AIRPORT_AT_BAUD;
     firmwareOptions.is_airport = doc["is-airport"] | true;
-    #else
+#else
     firmwareOptions.uart_baud = doc["rcvr-uart-baud"] | 420000;
     firmwareOptions.is_airport = doc["is-airport"] | false;
-    #endif
+#endif
     firmwareOptions.lock_on_first_connection = doc["lock-on-first-connection"] | true;
-    #endif
+#endif
     firmwareOptions.domain = doc["domain"] | 0;
     firmwareOptions.flash_discriminator = doc["flash-discriminator"] | 0U;
 
@@ -356,7 +364,7 @@ static void options_LoadFromFlashOrFile(EspFlashStream &strmFlash)
 
 /**
  * @brief: Put a blank options.json into SPIFFS to force all options to the coded defaults in options_LoadFromFlashOrFile()
-*/
+ */
 void options_SetTrueDefaults()
 {
     JsonDocument doc;
@@ -372,7 +380,7 @@ void options_SetTrueDefaults()
 /**
  * @brief:  Initializes product_name / device_name either from flash or static values
  * @return: true if the names came from flash, or false if the values are default
-*/
+ */
 static bool options_LoadProductAndDeviceName(EspFlashStream &strmFlash)
 {
     if (options_HasStringInFlash(strmFlash))
@@ -389,13 +397,13 @@ static bool options_LoadProductAndDeviceName(EspFlashStream &strmFlash)
     }
     else
     {
-        #if defined(TARGET_UNIFIED_RX)
+#if defined(TARGET_UNIFIED_RX)
         strcpy(product_name, "Unified RX");
         strcpy(device_name, "Unified RX");
-        #else
+#else
         strcpy(product_name, "Unified TX");
         strcpy(device_name, "Unified TX");
-        #endif
+#endif
 
         return false;
     }
@@ -429,10 +437,10 @@ bool options_init()
     bool hasHardware = hardware_init(strmFlash);
     // flash location of logo image in RGB565 format
     logo_image = baseAddr + ESP.getSketchSize() +
-        ELRSOPTS_PRODUCTNAME_SIZE +
-        ELRSOPTS_DEVICENAME_SIZE +
-        ELRSOPTS_OPTIONS_SIZE +
-        ELRSOPTS_HARDWARE_SIZE;
+                 ELRSOPTS_PRODUCTNAME_SIZE +
+                 ELRSOPTS_DEVICENAME_SIZE +
+                 ELRSOPTS_OPTIONS_SIZE +
+                 ELRSOPTS_HARDWARE_SIZE;
 
     debugFreeInitLogger();
 
