@@ -1580,6 +1580,13 @@ void loop()
         UpdateConnectDisconnectStatus();
     }
 
+    bool rfLinked = isRfLinkActive();
+    if (rfLinked != lastSentRfLinked)
+    {
+        sendRfLinkStateTelemetry(rfLinked);
+        lastSentRfLinked = rfLinked;
+    }
+
     // Update UI devices
     devicesUpdate(now);
 
