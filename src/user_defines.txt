@@ -7,11 +7,15 @@
 # HOW TO USE THIS FILE: https://www.expresslrs.org/1.0/software/user-defines/
 # SIMPLY SEARCH WHICH DEFINE YOU NEED HELP WITH
 
+### CUSTOM DF VERSIONS: ###
+
+-DFIRMWARE_VERSION_DF='"DF-1.0.0"'
+-DHARDWARE_VERSION_DF='"DF-1.0.0"'
 
 ### BINDING PHRASE: ###
 # Uncomment the line below to use a hardcoded binding phrase
 # Leave commented to use traditional binding
--DMY_BINDING_PHRASE="nimbus-tlm"
+-DMY_BINDING_PHRASE="nimbus"
 
 
 ### REGULATORY DOMAIN: ###
