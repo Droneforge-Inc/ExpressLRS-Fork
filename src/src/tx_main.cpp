@@ -80,6 +80,7 @@ static enum
 volatile uint32_t LastTLMpacketRecvMillis = 0;
 uint32_t TLMpacketReported = 0;
 static bool commitInProgress = false;
+static bool lastSentRfLinked = false;
 
 LQCALC<25> LQCalc;
 
@@ -972,6 +973,29 @@ static void SendRxWiFiOverMSP()
     MspSender.SetDataToTransmit(MSPDataPackage, 1);
 }
 
+static bool isRfLinkActive()
+{
+    return connectionState == connected &&
+           connectionHasModelMatch &&
+           teamraceHasModelMatch;
+}
+
+static void sendRfLinkStateTelemetry(bool linked)
+{
+    constexpr uint8_t payloadLen = 1;
+    uint8_t frame[CRSF_FRAME_NOT_COUNTED_BYTES + CRSF_FRAME_SIZE(payloadLen)];
+
+    // CRSF payload: 0 = disconnected, 1 = connected.
+    frame[3] = linked ? 1 : 0;
+    CRSF::SetHeaderAndCrc(frame, CRSF_FRAMETYPE_NIMBUS_LINK_STATE, CRSF_FRAME_SIZE(payloadLen), CRSF_ADDRESS_RADIO_TRANSMITTER);
+
+    if (handset != nullptr)
+    {
+        handset->sendTelemetryToTX(frame);
+    }
+    sendCRSFTelemetryToBackpack(frame);
+}
+
 static void CheckReadyToSend()
 {
     if (RxWiFiReadyToSend)
@@ -1554,6 +1578,13 @@ void loop()
     if (connectionState < MODE_STATES)
     {
         UpdateConnectDisconnectStatus();
+    }
+
+    bool rfLinked = isRfLinkActive();
+    if (rfLinked != lastSentRfLinked)
+    {
+        sendRfLinkStateTelemetry(rfLinked);
+        lastSentRfLinked = rfLinked;
     }
 
     // Update UI devices
