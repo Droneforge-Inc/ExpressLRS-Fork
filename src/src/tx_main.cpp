@@ -1540,6 +1540,7 @@ void setup()
 
     devicesStart();
     EnterBindingMode();
+    config.SetPower(2);
 
     if (firmwareOptions.is_airport)
     {
