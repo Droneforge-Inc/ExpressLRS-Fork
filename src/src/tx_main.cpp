@@ -81,6 +81,16 @@ volatile uint32_t LastTLMpacketRecvMillis = 0;
 uint32_t TLMpacketReported = 0;
 static bool commitInProgress = false;
 static bool lastSentRfLinked = false;
+static constexpr uint8_t FC_MCU_UID_LEN = 12;
+static constexpr uint8_t MSP_V2_FUNCTION_OFFSET = 7;
+static constexpr uint8_t MSP_V2_PAYLOAD_LENGTH_OFFSET = 9;
+static constexpr uint8_t MSP_V2_PAYLOAD_OFFSET = 11;
+// CRSF MSP responses carry status + flags + function + length + payload, then the CRSF CRC.
+static constexpr uint8_t MSP_UID_RESPONSE_FRAME_SIZE = FC_MCU_UID_LEN + 10;
+static constexpr uint32_t FC_MCU_UID_REQUEST_INTERVAL_MS = 1000U;
+static uint8_t flightControllerUid[FC_MCU_UID_LEN] = {0};
+static bool flightControllerUidValid = false;
+static uint32_t lastFlightControllerUidRequestMillis = 0;
 
 LQCALC<25> LQCalc;
 
@@ -898,6 +908,8 @@ bool ICACHE_RAM_ATTR RXdoneISR(SX12xxDriverCommon::rx_status const status)
     return packetSuccessful;
 }
 
+static void resetFlightControllerUid();
+
 void ICACHE_RAM_ATTR TXdoneISR()
 {
     if (!busyTransmitting)
@@ -939,6 +951,7 @@ static void UpdateConnectDisconnectStatus()
         if (connectionState != connected)
         {
             connectionState = connected;
+            resetFlightControllerUid();
             CRSFHandset::ForwardDevicePings = true;
             DBGLN("got downlink conn");
 
@@ -951,6 +964,10 @@ static void UpdateConnectDisconnectStatus()
     else if (connectionState == connected ||
              (now - rfModeLastChangedMS) > ExpressLRS_currAirRate_RFperfParams->DisconnectTimeoutMs)
     {
+        if (connectionState != disconnected)
+        {
+            resetFlightControllerUid();
+        }
         connectionState = disconnected;
         connectionHasModelMatch = true;
         CRSFHandset::ForwardDevicePings = false;
@@ -994,6 +1011,93 @@ static void sendRfLinkStateTelemetry(bool linked)
         handset->sendTelemetryToTX(frame);
     }
     sendCRSFTelemetryToBackpack(frame);
+}
+
+static void resetFlightControllerUid()
+{
+    memset(flightControllerUid, 0, sizeof(flightControllerUid));
+    flightControllerUidValid = false;
+    lastFlightControllerUidRequestMillis = 0;
+}
+
+static void sendFlightControllerUidTelemetry()
+{
+    uint8_t frame[CRSF_FRAME_NOT_COUNTED_BYTES + CRSF_FRAME_SIZE(FC_MCU_UID_LEN)];
+
+    memcpy(&frame[3], flightControllerUid, sizeof(flightControllerUid));
+    CRSF::SetHeaderAndCrc(frame, CRSF_FRAMETYPE_NIMBUS_FC_UID, CRSF_FRAME_SIZE(FC_MCU_UID_LEN), CRSF_ADDRESS_RADIO_TRANSMITTER);
+
+    if (handset != nullptr)
+    {
+        handset->sendTelemetryToTX(frame);
+    }
+}
+
+static void requestFlightControllerUid(uint32_t now)
+{
+    uint8_t request[MSP_REQUEST_LENGTH(0)];
+
+    CRSF::SetMspV2Request(request, MSP_UID, nullptr, 0);
+    CRSF::SetExtendedHeaderAndCrc(
+        request,
+        CRSF_FRAMETYPE_MSP_REQ,
+        MSP_REQUEST_FRAME_SIZE(0),
+        CRSF_ADDRESS_CRSF_TRANSMITTER,
+        CRSF_ADDRESS_FLIGHT_CONTROLLER);
+    CRSF::AddMspMessage(sizeof(request), request);
+    lastFlightControllerUidRequestMillis = now;
+}
+
+static void updateFlightControllerUidRequest(uint32_t now)
+{
+    if (connectionState != connected || flightControllerUidValid)
+    {
+        return;
+    }
+
+    if (lastFlightControllerUidRequestMillis != 0 &&
+        (now - lastFlightControllerUidRequestMillis) < FC_MCU_UID_REQUEST_INTERVAL_MS)
+    {
+        return;
+    }
+
+    requestFlightControllerUid(now);
+}
+
+static bool isFlightControllerUidResponse(const uint8_t *packet)
+{
+    const auto *header = (const crsf_ext_header_t *)packet;
+
+    if (header->type != CRSF_FRAMETYPE_MSP_RESP ||
+        header->dest_addr != CRSF_ADDRESS_CRSF_TRANSMITTER ||
+        header->orig_addr != CRSF_ADDRESS_FLIGHT_CONTROLLER ||
+        header->frame_size < MSP_V2_PAYLOAD_OFFSET)
+    {
+        return false;
+    }
+
+    const uint16_t function = packet[MSP_V2_FUNCTION_OFFSET] | (packet[MSP_V2_FUNCTION_OFFSET + 1] << 8);
+    return function == MSP_UID;
+}
+
+static bool handleFlightControllerUidResponse(const uint8_t *packet)
+{
+    if (!isFlightControllerUidResponse(packet))
+    {
+        return false;
+    }
+
+    const uint16_t function = packet[MSP_V2_FUNCTION_OFFSET] | (packet[MSP_V2_FUNCTION_OFFSET + 1] << 8);
+    const uint16_t payloadLen = packet[MSP_V2_PAYLOAD_LENGTH_OFFSET] | (packet[MSP_V2_PAYLOAD_LENGTH_OFFSET + 1] << 8);
+    if (function != MSP_UID || payloadLen != FC_MCU_UID_LEN || ((const crsf_ext_header_t *)packet)->frame_size < MSP_UID_RESPONSE_FRAME_SIZE)
+    {
+        return false;
+    }
+
+    memcpy(flightControllerUid, packet + MSP_V2_PAYLOAD_OFFSET, sizeof(flightControllerUid));
+    flightControllerUidValid = true;
+    sendFlightControllerUidTelemetry();
+    return true;
 }
 
 static void CheckReadyToSend()
@@ -1612,6 +1716,7 @@ void loop()
     }
 
     CheckReadyToSend();
+    updateFlightControllerUidRequest(now);
     CheckConfigChangePending();
     DynamicPower_Update(now);
     VtxPitmodeSwitchUpdate();
@@ -1651,12 +1756,17 @@ void loop()
         }
         else
         {
+            const bool isUidResponse = isFlightControllerUidResponse(CRSFinBuffer);
+            const bool consumed = isUidResponse && handleFlightControllerUidResponse(CRSFinBuffer);
             // Send all other tlm to handset
-            if (handset != nullptr)
+            if (!consumed && !isUidResponse && handset != nullptr)
             {
                 handset->sendTelemetryToTX(CRSFinBuffer);
             }
-            sendCRSFTelemetryToBackpack(CRSFinBuffer);
+            if (!consumed && !isUidResponse)
+            {
+                sendCRSFTelemetryToBackpack(CRSFinBuffer);
+            }
         }
         TelemetryReceiver.Unlock();
     }

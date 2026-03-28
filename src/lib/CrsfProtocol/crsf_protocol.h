@@ -91,7 +91,8 @@ typedef enum : uint8_t
     // Custom/Nimbus frames
     CRSF_FRAMETYPE_NIMBUS_VRX_RSSI = 0xE0,
     CRSF_FRAMETYPE_NIMBUS_VRX_TOP_CHANNELS = 0xE1,
-    CRSF_FRAMETYPE_NIMBUS_LINK_STATE = 0xE2
+    CRSF_FRAMETYPE_NIMBUS_LINK_STATE = 0xE2,
+    CRSF_FRAMETYPE_NIMBUS_FC_UID = 0xE3
 } crsf_frame_type_e;
 
 typedef enum : uint8_t {
