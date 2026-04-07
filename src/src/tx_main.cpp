@@ -293,9 +293,27 @@ bool ICACHE_RAM_ATTR ProcessTLMpacket(SX12xxDriverCommon::rx_status const status
 expresslrs_tlm_ratio_e ICACHE_RAM_ATTR UpdateTlmRatioEffective()
 {
     expresslrs_tlm_ratio_e ratioConfigured = (expresslrs_tlm_ratio_e)config.GetTlm();
-    // default is suggested rate for TLM_RATIO_STD/TLM_RATIO_DISARMED
-    expresslrs_tlm_ratio_e retVal = ExpressLRS_currAirRate_Modparams->TLMinterval;
+    // Resolve the configured value before applying any temporary boost logic.
+    expresslrs_tlm_ratio_e baseRatio = ExpressLRS_currAirRate_Modparams->TLMinterval;
+    expresslrs_tlm_ratio_e retVal;
     bool updateTelemDenom = true;
+
+    if (ratioConfigured == TLM_RATIO_DISARMED)
+    {
+        if (handset->IsArmed())
+        {
+            baseRatio = TLM_RATIO_NO_TLM;
+            // Avoid updating ExpressLRS_currTlmDenom until connectionState == disconnected
+            if (connectionState == connected)
+                updateTelemDenom = false;
+        }
+    }
+    else if (ratioConfigured != TLM_RATIO_STD)
+    {
+        baseRatio = ratioConfigured;
+    }
+
+    retVal = baseRatio;
 
     // TLM ratio is boosted until there is one complete sync cycle with no BoostRequest
     if (syncTelemBoostState == stbBoosting)
@@ -312,27 +330,12 @@ expresslrs_tlm_ratio_e ICACHE_RAM_ATTR UpdateTlmRatioEffective()
 
         if (!OtaIsFullRes && config.GetSwitchMode() == smWideOr8ch)
         {
-            // avoid crossing the wide switch 7-bit to 6-bit boundary
-            if (ratioConfigured <= TLM_RATIO_1_8 || ratioConfigured == TLM_RATIO_DISARMED)
+            // Compare against the resolved base ratio, not the raw config enum.
+            if (baseRatio <= TLM_RATIO_1_8)
             {
                 retVal = TLM_RATIO_1_8;
             }
         }
-    }
-    // If Armed, telemetry is disabled, otherwise use STD
-    else if (ratioConfigured == TLM_RATIO_DISARMED)
-    {
-        if (handset->IsArmed())
-        {
-            retVal = TLM_RATIO_NO_TLM;
-            // Avoid updating ExpressLRS_currTlmDenom until connectionState == disconnected
-            if (connectionState == connected)
-                updateTelemDenom = false;
-        }
-    }
-    else if (ratioConfigured != TLM_RATIO_STD)
-    {
-        retVal = ratioConfigured;
     }
 
     if (updateTelemDenom)
