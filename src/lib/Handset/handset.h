@@ -37,6 +37,11 @@ public:
      */
     void registerParameterUpdateCallback(void (*callback)(uint8_t type, uint8_t index, uint8_t arg)) { RecvParameterUpdate = callback; }
     /**
+     * @brief register a function to be called when a Nimbus bind UID update is received from the handset
+     * @param callback
+     */
+    void registerBindUidUpdateCallback(void (*callback)(const uint8_t *uid)) { RecvBindUidUpdate = callback; }
+    /**
      * Register callback functions for state information about the connection or handset
      * @param connectedCallback called when the protocol detects a stable connection to the handset
      * @param disconnectedCallback called when the protocol loses its connection to the handset
@@ -111,6 +116,7 @@ protected:
     void (*connected)() = nullptr;       // called when RC packet stream is regained
     void (*RecvModelUpdate)() = nullptr; // called when model id changes, ie command from Radio
     void (*RecvParameterUpdate)(uint8_t type, uint8_t index, uint8_t arg) = nullptr; // called when recv parameter update req, ie from LUA
+    void (*RecvBindUidUpdate)(const uint8_t *uid) = nullptr; // called when a Nimbus bind UID update is received
     void (*OnBindingCommand)() = nullptr; // Called when a binding command is received
 
     volatile uint32_t RCdataLastRecv = 0;

@@ -113,6 +113,9 @@ StubbornReceiver TelemetryReceiver;
 StubbornSender MspSender;
 uint8_t CRSFinBuffer[CRSF_MAX_PACKET_LEN + 1];
 
+static void sendBindUidTelemetry();
+static void SetBindUidFromCrsf(const uint8_t *newUid);
+
 device_affinity_t ui_devices[] = {
     {&Handset_device, 1},
 #ifdef HAS_VRX
@@ -774,6 +777,7 @@ static void UARTconnected()
     }
     // But start the timer to get OpenTX sync going and a ModelID update sent
     hwTimer::resume();
+    sendBindUidTelemetry();
 }
 
 void ResetPower()
@@ -1034,6 +1038,65 @@ static void sendFlightControllerUidTelemetry()
     {
         handset->sendTelemetryToTX(frame);
     }
+}
+
+static void sendBindUidTelemetry()
+{
+    uint8_t frame[CRSF_FRAME_NOT_COUNTED_BYTES + CRSF_FRAME_SIZE(UID_LEN)];
+
+    memcpy(&frame[3], UID, UID_LEN);
+    CRSF::SetHeaderAndCrc(frame, CRSF_FRAMETYPE_NIMBUS_BIND_UID, CRSF_FRAME_SIZE(UID_LEN), CRSF_ADDRESS_RADIO_TRANSMITTER);
+
+    if (handset != nullptr)
+    {
+        handset->sendTelemetryToTX(frame);
+    }
+}
+
+static void SetBindUidFromCrsf(const uint8_t *newUid)
+{
+    const bool uidChanged = memcmp(UID, newUid, UID_LEN) != 0;
+    const bool optionsChanged = !firmwareOptions.hasUID || memcmp(firmwareOptions.uid, newUid, UID_LEN) != 0;
+
+    if (!uidChanged && !optionsChanged)
+    {
+        sendBindUidTelemetry();
+        return;
+    }
+
+    const bool resumeTransmitter = connectionState != noCrossfire;
+
+    hwTimer::stop();
+    while (busyTransmitting)
+        ;
+
+    if (InBindingMode)
+    {
+        MspSender.ResetState();
+        InBindingMode = false;
+    }
+
+    memcpy(UID, newUid, UID_LEN);
+    firmwareOptions.hasUID = true;
+    memcpy(firmwareOptions.uid, newUid, UID_LEN);
+
+#if defined(TARGET_UNIFIED_TX)
+    saveOptions();
+#endif
+
+    OtaNonce = 0;
+    OtaUpdateCrcInitFromUid();
+    rfModeLastChangedMS = millis();
+    SetRFLinkRate(config.GetRate());
+    syncSpamCounter = syncSpamAmount;
+    syncSpamCounterAfterRateChange = syncSpamAmountAfterRateChange;
+
+    if (resumeTransmitter)
+    {
+        hwTimer::resume();
+    }
+
+    sendBindUidTelemetry();
 }
 
 static void requestFlightControllerUid(uint32_t now)
@@ -1586,6 +1649,7 @@ void setup()
         Radio.TXdoneCallback = &TXdoneISR;
 
         handset->registerCallbacks(UARTconnected, firmwareOptions.is_airport ? nullptr : UARTdisconnected, ModelUpdateReq, EnterBindingModeSafely);
+        handset->registerBindUidUpdateCallback(SetBindUidFromCrsf);
 
         DBGLN("ExpressLRS TX Module Booted...");
 

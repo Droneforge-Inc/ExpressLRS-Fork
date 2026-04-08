@@ -387,6 +387,21 @@ bool CRSFHandset::processInternalCrsfPackage(uint8_t *package)
                     #endif
                     break;
                 }
+                case CRSF_COMMAND_NIMBUS_SET_BIND_UID:
+                {
+                    constexpr uint8_t bindUidCommandFrameSize = CRSF_FRAME_LENGTH_EXT_TYPE_CRC + 2 + UID_LEN;
+                    if (header->frame_size < bindUidCommandFrameSize)
+                    {
+                        DBGLN("Nimbus Set Bind UID frame too short: %d", header->frame_size);
+                        break;
+                    }
+
+                    if (RecvBindUidUpdate)
+                    {
+                        RecvBindUidUpdate(&header->payload[2]);
+                    }
+                    break;
+                }
                 default:
                     DBGLN("Nimbus VRX Unknown command: %d", header->payload[1]);
                     break;
