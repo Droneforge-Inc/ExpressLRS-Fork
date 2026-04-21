@@ -9,13 +9,27 @@
 
 VRX *vrx;
 
+static bool isVrxConfigured()
+{
+    return OPT_USE_VRX_CHANNELS
+        && GPIO_PIN_VRX_BBS_DATA != UNDEF_PIN
+        && GPIO_PIN_VRX_BBS_CS != UNDEF_PIN
+        && GPIO_PIN_VRX_BBS_SCK != UNDEF_PIN
+        && GPIO_PIN_VRX_RSSI_1 != UNDEF_PIN;
+}
+
 static void initialize()
 {
-    vrx = new VRX();
+    vrx = isVrxConfigured() ? new VRX() : nullptr;
 }
 
 static int start()
 {
+    if (!vrx)
+    {
+        return DURATION_NEVER;
+    }
+
     vrx->setup();
     vrx->setChannel(0);
     return DURATION_IMMEDIATELY;
@@ -23,6 +37,11 @@ static int start()
 
 static int timeout()
 {
+    if (!vrx)
+    {
+        return DURATION_NEVER;
+    }
+
     vrx->update();
 
     if (vrx->getScanComplete()) {
@@ -60,12 +79,22 @@ device_t VRX_device = {
 
 void VrxTriggerScan(bool autoConnect)
 {
+    if (!vrx)
+    {
+        return;
+    }
+
     vrx->triggerScan(autoConnect);
     devicesTriggerEvent();
 }
 
 void VrxConnect(uint8_t band, uint8_t channel)
 {
+    if (!vrx)
+    {
+        return;
+    }
+
     vrx->triggerConnect(band, channel);
     devicesTriggerEvent();
 }

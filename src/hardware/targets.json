@@ -847,6 +847,15 @@
                 "min_version": "3.4.0",
                 "platform": "esp32-s3",
                 "firmware": "Unified_ESP32S3_2400_TX"
+            },
+	    "nimbus_s3_diversity": {
+                "product_name": "DIY ESP32-S3 Nimbus Diversity 2.4Ghz TX",
+                "lua_name": "Nimbus S3 Diversity LoRa128x",
+                "layout_file": "DIY S3 Nimbus Diversity.json",
+                "upload_methods": ["uart", "wifi", "etx"],
+                "min_version": "3.4.0",
+                "platform": "esp32-s3",
+                "firmware": "Unified_ESP32S3_2400_TX"
             }
         },
         "rx_2400": {

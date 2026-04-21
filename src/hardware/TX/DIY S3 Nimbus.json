@@ -21,16 +21,17 @@
 
     "led":2,
     "led_rgb_isgrb":false,
- 
+
     "use_backpack": false,
     "debug_backpack_baud": 460800,
     "debug_backpack_rx": 44,
     "debug_backpack_tx": 43,
     "passthrough_baud": 115200,
 
-    "use_vtx_channels": true,
-    "vtx_rssi": 14,
-    "vtx_bbs_data": 41,
-    "vtx_bbs_cs": 40,
-    "vtx_bbs_sck": 39
+    "use_vrx_channels": true,
+    "use_vrx_diversity": false,
+    "vrx_rssi_1": 14,
+    "vrx_bbs_data": 41,
+    "vrx_bbs_cs": 40,
+    "vrx_bbs_sck": 39
 }

@@ -4,9 +4,9 @@
 #include "device.h"
 
 #if defined(TARGET_TX) \
-    && defined(GPIO_PIN_VTX_BBS_DATA) \
-    && defined(GPIO_PIN_VTX_BBS_CS) \
-    && defined(GPIO_PIN_VTX_BBS_SCK)
+    && defined(GPIO_PIN_VRX_BBS_DATA) \
+    && defined(GPIO_PIN_VRX_BBS_CS) \
+    && defined(GPIO_PIN_VRX_BBS_SCK)
 
 #define HAS_VRX
 

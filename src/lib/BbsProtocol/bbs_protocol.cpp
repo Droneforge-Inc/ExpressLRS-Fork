@@ -34,7 +34,7 @@ namespace BbsProtocol {
     //
     // Refer to RTC6715 datasheet for further details.
     //
-    void setVtxChannel(uint16_t channel) {
+    void setVrxChannel(uint16_t channel) {
         sendRegister(SPI_ADDRESS_SYNTH_A, channel);
     }
 
@@ -54,8 +54,8 @@ static inline void sendRegister(uint8_t address, uint32_t data) {
 
     // Finished clocking data in
     sendSlaveSelect(HIGH);
-    digitalWrite(GPIO_PIN_VTX_BBS_SCK, LOW);
-    digitalWrite(GPIO_PIN_VTX_BBS_DATA, LOW);
+    digitalWrite(GPIO_PIN_VRX_BBS_SCK, LOW);
+    digitalWrite(GPIO_PIN_VRX_BBS_DATA, LOW);
 }
 
 
@@ -67,19 +67,19 @@ static inline void sendBits(uint32_t bits, uint8_t count) {
 }
 
 static inline void sendBit(uint8_t value) {
-    digitalWrite(GPIO_PIN_VTX_BBS_SCK, LOW);
+    digitalWrite(GPIO_PIN_VRX_BBS_SCK, LOW);
     delayMicroseconds(1);
 
-    digitalWrite(GPIO_PIN_VTX_BBS_DATA, value);
+    digitalWrite(GPIO_PIN_VRX_BBS_DATA, value);
     delayMicroseconds(1);
-    digitalWrite(GPIO_PIN_VTX_BBS_SCK, HIGH);
+    digitalWrite(GPIO_PIN_VRX_BBS_SCK, HIGH);
     delayMicroseconds(1);
 
-    digitalWrite(GPIO_PIN_VTX_BBS_SCK, LOW);
+    digitalWrite(GPIO_PIN_VRX_BBS_SCK, LOW);
     delayMicroseconds(1);
 }
 
 static inline void sendSlaveSelect(uint8_t value) {
-    digitalWrite(GPIO_PIN_VTX_BBS_CS, value);
+    digitalWrite(GPIO_PIN_VRX_BBS_CS, value);
     delayMicroseconds(1);
 }

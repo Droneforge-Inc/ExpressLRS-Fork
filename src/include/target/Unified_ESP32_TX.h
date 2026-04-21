@@ -197,11 +197,17 @@
 #define OPT_HAS_THERMAL_LM75A hardware_flag(HARDWARE_thermal_lm75a)
 #define OPT_HAS_THERMAL OPT_HAS_THERMAL_LM75A // If any of the sensors are present
 
-// VTX Channels
-#define GPIO_PIN_VTX_RSSI hardware_pin(HARDWARE_vtx_rssi)
-#define GPIO_PIN_VTX_BBS_DATA hardware_pin(HARDWARE_vtx_bbs_data)
-#define GPIO_PIN_VTX_BBS_CS hardware_pin(HARDWARE_vtx_bbs_cs)
-#define GPIO_PIN_VTX_BBS_SCK hardware_pin(HARDWARE_vtx_bbs_sck)
+// VRX Channels
+#define GPIO_PIN_VRX_RSSI_1 hardware_pin(HARDWARE_vrx_rssi_1)
+#define GPIO_PIN_VRX_RSSI_2 hardware_pin(HARDWARE_vrx_rssi_2)
+#define GPIO_PIN_VRX_BBS_DATA hardware_pin(HARDWARE_vrx_bbs_data)
+#define GPIO_PIN_VRX_BBS_CS hardware_pin(HARDWARE_vrx_bbs_cs)
+#define GPIO_PIN_VRX_BBS_SCK hardware_pin(HARDWARE_vrx_bbs_sck)
+#define GPIO_PIN_VID_SW_EN hardware_pin(HARDWARE_vid_sw_en)
+#define GPIO_PIN_VID_SW_A0 hardware_pin(HARDWARE_vid_sw_a0)
+#define GPIO_PIN_VID_SW_A1 hardware_pin(HARDWARE_vid_sw_a1)
+#define OPT_USE_VRX_CHANNELS hardware_flag(HARDWARE_use_vrx_channels)
+#define OPT_USE_VRX_DIVERSITY hardware_flag(HARDWARE_use_vrx_diversity)
 
 /*
 // These are RX settings
