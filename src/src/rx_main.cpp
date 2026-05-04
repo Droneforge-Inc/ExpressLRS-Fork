@@ -2313,6 +2313,17 @@ void reset_into_bootloader(void)
 
     HAL_NVIC_SystemReset();
 #elif defined(PLATFORM_ESP8266)
+    // Air75: quiet the RX link before entering the ESP bootloader so Nimbus 
+    // can flash through FC passthrough.
+    hwTimer::stop();
+#ifdef HAS_VTX_SPI
+    disableVTxSpi();
+#endif
+#ifdef HAS_MSP_VTX
+    disableMspVtx();
+#endif
+    POWERMGNT::setPower(MinPower);
+    Radio.End();
     delay(100);
     ESP.rebootIntoUartDownloadMode();
 #elif defined(PLATFORM_ESP32)
