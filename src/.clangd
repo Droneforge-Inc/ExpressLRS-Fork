@@ -1,0 +1,53 @@
+# clangd configuration for ExpressLRS (PlatformIO project)
+# This helps clangd find the right includes and defines for the firmware code.
+#
+# The key to project headers (crc.h, targets.h, etc.) is having a *fresh* DB
+# from the real cross-compile build + clangd knowing the right root.
+#
+# After any significant `pio run -e Unified_ESP32S3_...` (or after editing build flags):
+#   make compdb          # from src/  (generates root compile_commands.json)
+#   In Neovim: :ELRSRestartClangd   (or <leader>cC)
+#
+# Your nvim config (lsp.lua) now:
+#   - Starts clangd with --query-driver (so it can invoke the real xtensa g++ for includes)
+#   - Uses a smart root_dir function that prefers the nearest compile_commands.json/.clangd
+#     over the outer repo .git. This makes the src/ project "own" the LSP session.
+#
+# Best workflow to leverage the Neovim helpers (.nvim.lua maps, makeprg, etc.):
+#   cd src
+#   nvim .     (or nvim lib/CRC/crc.h etc. from inside src/)
+#   The buffer-local <leader>cb / <leader>cV / :make etc. will activate.
+
+CompileFlags:
+  # Primary: use the DB generated at this project root.
+  CompilationDatabase: .
+
+  # GCC-only Xtensa flags from PlatformIO's DB that clangd's clang frontend
+  # does not understand.
+  Remove:
+    - -mlongcalls
+    - -fstrict-volatile-bitfields
+    - -fno-tree-switch-conversion
+
+  # If a header is opened in isolation and clangd can't find a matching TU in the DB,
+  # these are appended. The real DB commands are much richer.
+  Add: ["-Iinclude", "-I."]
+
+Diagnostics:
+  # PIO/Arduino code is full of macros, unused vars in headers, etc.
+  # These keep diagnostics usable.
+  UnusedIncludes: None
+  Suppress:
+    - "pp_including_mainfile_in_preamble"
+
+# For quick native/host work (limited code coverage):
+# CompilationDatabase: .pio/build/native
+
+---
+If:
+  PathMatch: .*\.h
+
+CompileFlags:
+  # Many ExpressLRS headers are C++ headers but clangd may infer their command
+  # from a nearby dummy.c file in PlatformIO's compilation DB.
+  Add: ["-xc++-header", "-std=gnu++11"]

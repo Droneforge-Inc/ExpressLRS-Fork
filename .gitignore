@@ -14,3 +14,4 @@ src/hardware
 .DS_Store
 .vscode/
 user_def.txt
+/src/compile_commands.json
