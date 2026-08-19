@@ -4,10 +4,14 @@
 #include "crsf_protocol.h"
 #include "handset.h"
 #include "CRSF.h"
+#include <cstdint>
 
 #ifdef HAS_VRX
 
 VRX *vrx;
+
+static bool frequencyRequestPending = false;
+static uint16_t requestedFrequencyMHz = 0;
 
 static void initialize()
 {
@@ -47,7 +51,13 @@ static int event()
     {
         vrx->connect();
     }
-    
+
+    if (vrx && frequencyRequestPending)
+    {
+        frequencyRequestPending = false;
+        vrx->setFrequency(requestedFrequencyMHz);
+    }
+
     return DURATION_IGNORE;
 }
 
@@ -70,6 +80,13 @@ void VrxConnect(uint8_t band, uint8_t channel)
     devicesTriggerEvent();
 }
 
+void VrxSetFrequency(uint16_t frequencyMHz)
+{
+    requestedFrequencyMHz = frequencyMHz;
+    frequencyRequestPending = true;
+    devicesTriggerEvent();
+}
+
 void sendVrxTopChannelsFrame(uint8_t* scanResults)
 {
     // CRSF frame structure:
@@ -78,20 +95,20 @@ void sendVrxTopChannelsFrame(uint8_t* scanResults)
     // [2] = type (CRSF_FRAMETYPE_NIMBUS_VRX_TOP_CHANNELS)
     // [3...50] = payload (48 bytes of RSSI data)
     // [51] = crc
-    
+
     constexpr uint8_t payloadLen = CHANNELS_SIZE; // 48 bytes
     uint8_t buffer[payloadLen + 4]; // +4 for addr, size, type, crc
-    
+
     buffer[0] = CRSF_ADDRESS_RADIO_TRANSMITTER;
     buffer[1] = CRSF_FRAME_SIZE(payloadLen); // payloadLen + 2 (type + crc)
     buffer[2] = CRSF_FRAMETYPE_NIMBUS_VRX_TOP_CHANNELS;
-    
+
     // Copy RSSI scan results as payload
     memcpy(&buffer[3], scanResults, payloadLen);
-    
+
     // Calculate CRC over type and payload
     buffer[payloadLen + 3] = crsf_crc.calc(&buffer[2], payloadLen + 1);
-    
+
     // Send the frame
     handset->sendTelemetryToTX(buffer);
 }

@@ -13,6 +13,7 @@
 extern device_t VRX_device;
 void VrxTriggerScan(bool autoConnect);
 void VrxConnect(uint8_t band, uint8_t channel);
+void VrxSetFrequency(uint16_t frequencyMHz);
 void sendVrxTopChannelsFrame(uint8_t* scanResults);
 
 #endif

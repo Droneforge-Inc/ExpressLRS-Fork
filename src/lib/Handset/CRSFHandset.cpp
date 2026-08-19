@@ -1,9 +1,13 @@
 #include "CRSF.h"
 #include "CRSFHandset.h"
 #include "FIFO.h"
+#include "crsf_protocol.h"
 #include "logging.h"
 #include "helpers.h"
+#include <cstdint>
+#if !defined(TARGET_NATIVE)
 #include "devVRX.h"
+#endif
 
 #if defined(CRSF_TX_MODULE) && !defined(UNIT_TEST)
 #include "device.h"
@@ -387,6 +391,26 @@ bool CRSFHandset::processInternalCrsfPackage(uint8_t *package)
                     #endif
                     break;
                 }
+                case CRSF_COMMAND_NIMBUS_VRX_SET_FREQUENCY:
+                {
+                        constexpr uint8_t commandPayloadLength = 4U;
+                        constexpr uint8_t minimumFrameSize = CRSF_FRAME_LENGTH_EXT_TYPE_CRC + commandPayloadLength;
+
+                        if (header->frame_size < minimumFrameSize)
+                        {
+                            DBGLN("Nimbus VRX frequency frame too short: %u", static_cast<unsigned>(header->frame_size));
+                            break;
+                        }
+
+                        const uint16_t frequencyMHz = static_cast<uint16_t>(header->payload[2])
+                            | (static_cast<uint16_t>(header->payload[3]) << 8U);
+
+                        DBGLN("Nimbus VRX Set Frequency: %u MHz", static_cast<unsigned>(frequencyMHz));
+                        #ifdef HAS_VRX
+                        VrxSetFrequency(frequencyMHz);
+                        #endif // HAS_VRX
+                        break;
+                }
                 case CRSF_COMMAND_NIMBUS_SET_BIND_UID:
                 {
                     constexpr uint8_t bindUidCommandFrameSize = CRSF_FRAME_LENGTH_EXT_TYPE_CRC + 2 + UID_LEN;
@@ -406,7 +430,7 @@ bool CRSFHandset::processInternalCrsfPackage(uint8_t *package)
                     DBGLN("Nimbus VRX Unknown command: %d", header->payload[1]);
                     break;
             }
-            
+
         }
         else
         {

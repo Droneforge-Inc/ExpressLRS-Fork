@@ -55,7 +55,7 @@ void test_device_info(void)
     TEST_ASSERT_EQUAL(DEVICE_INFORMATION_FRAME_SIZE, header->frame_size);
 
     uint8_t *data = deviceInformation + sizeof(crsf_ext_header_t);
-    uint8_t compare [] = {'t', 'e', 's', 't', 'i', 'n', 'g', 0x0, 0x45, 0x4c, 0x52, 0x53, 0x0, 0x0, 0x0, 0x0, 0x0, 1, 2, 3, 0x0, 0x0};
+    uint8_t compare [] = {'t', 'e', 's', 't', 'i', 'n', 'g', 0x0, 0x45, 0x4c, 0x52, 0x53, 0xDF, 0x1, 0x0, 0x0, 0x0, 1, 2, 3, 0x0, 0x0};
 
     TEST_ASSERT_EQUAL_INT8_ARRAY(compare, data, sizeof(compare));
 

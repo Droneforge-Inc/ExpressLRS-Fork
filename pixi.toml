@@ -1,0 +1,40 @@
+[workspace]
+authors = ["Brandon Friend <brandon@droneforge.us>"]
+channels = ["conda-forge"]
+name = "ExpressLRS-Fork"
+platforms = ["linux-64"]
+version = "0.1.0"
+
+[dependencies]
+python = "3.11.*"
+git = ">=2.40"
+
+[pypi-dependencies]
+platformio = ">=6.1.16"
+
+[tasks]
+# --- Environment bootstrap -------------------------------------------------
+setup = { cmd = "pio pkg install && pio pkg update", cwd = "src", description = "Install PlatformIO platforms and library dependencies" }
+
+# --- Build -----------------------------------------------------------------
+build = { cmd = "pio run -e Unified_ESP32S3_2400_TX_via_UART", cwd = "src", description = "Build the Nimbus firmware (ESP32-S3 2.4GHz TX)" }
+"build:all" = { cmd = "pio run", cwd = "src", description = "Build every supported target" }
+clean = { cmd = "pio run -t clean", cwd = "src", description = "Remove build artifacts" }
+
+# --- Test ------------------------------------------------------------------
+test = { cmd = "pio test -e native", env = { PLATFORMIO_BUILD_FLAGS = "-DRegulatory_Domain_ISM_2400" }, cwd = "src", description = "Run native (host) unit tests" }
+
+# --- Flash -----------------------------------------------------------------
+flash = { cmd = "python python/flash_nimbus.py", cwd = "src", description = "Build and flash the Nimbus firmware over USB" }
+upload = { cmd = "python python/flash_nimbus.py", cwd = "src", description = "Alias for flash" }
+erase = { cmd = "pio run -e Unified_ESP32S3_2400_TX_via_UART -t erase", cwd = "src", description = "Erase the ESP32-S3 flash" }
+
+# --- Run / monitor ---------------------------------------------------------
+run = { cmd = "pio run -e Unified_ESP32S3_2400_TX_via_UART -t upload && pio device monitor -e Unified_ESP32S3_2400_TX_via_UART", cwd = "src", description = "Flash the firmware and open the serial monitor" }
+monitor = { cmd = "pio device monitor -e Unified_ESP32S3_2400_TX_via_UART", cwd = "src", description = "Open the serial monitor on the connected device" }
+
+# --- Debug ----------------------------------------------------------------
+debug = { cmd = "pio debug -e Unified_ESP32S3_2400_TX_via_UART", cwd = "src", description = "Start a GDB session over the ESP32-S3 built-in USB-JTAG" }
+
+# --- Utilities ------------------------------------------------------------
+devices = { cmd = "pio device list", cwd = "src", description = "List connected serial devices" }
