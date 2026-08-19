@@ -10,6 +10,10 @@ const uint8_t target_name_size = sizeof(target_name);
 const char commit[]{LATEST_COMMIT, 0};
 #if defined(UNIT_TEST)
 const char version[] = "1.2.3";
+#elif defined(TARGET_RX) && defined(RX_FIRMWARE_VERSION_DF)
+const char version[] = RX_FIRMWARE_VERSION_DF;
+#elif defined(TARGET_TX) && defined(TX_FIRMWARE_VERSION_DF)
+const char version[] = TX_FIRMWARE_VERSION_DF;
 #elif defined(FIRMWARE_VERSION_DF)
 const char version[] = FIRMWARE_VERSION_DF;
 #else
@@ -223,6 +227,12 @@ void saveOptions(Stream &stream, bool customised)
     {
         JsonArray uid = doc.createNestedArray("uid");
         copyArray(firmwareOptions.uid, sizeof(firmwareOptions.uid), uid);
+#if defined(TARGET_TX) && defined(PLATFORM_ESP32_S3)
+        if (customised)
+        {
+            doc["uid-saved"] = true;
+        }
+#endif
     }
     if (firmwareOptions.wifi_auto_on_interval != -1)
     {
@@ -321,6 +331,31 @@ static void options_LoadFromFlashOrFile(EspFlashStream &strmFlash)
         doc = spiffsDoc;
     }
 
+#if defined(TARGET_TX) && defined(PLATFORM_ESP32_S3)
+    // ESP32-S3 TX uses the MAC unless a phrase UID was flashed or intentionally saved.
+    const bool useSavedUid = hasSpiffs &&
+                             (!hasFlash || flashDoc["flash-discriminator"] == spiffsDoc["flash-discriminator"]) &&
+                             (spiffsDoc["uid-saved"] | false) &&
+                             spiffsDoc["uid"].is<JsonArray>();
+    const bool useFlashedUid = hasFlash &&
+                               ((flashDoc["uid-phrase"] | false) || (flashDoc["uid-saved"] | false)) &&
+                               flashDoc["uid"].is<JsonArray>();
+
+    if (useSavedUid)
+    {
+        copyArray(spiffsDoc["uid"], firmwareOptions.uid, sizeof(firmwareOptions.uid));
+        firmwareOptions.hasUID = true;
+    }
+    else if (useFlashedUid)
+    {
+        copyArray(flashDoc["uid"], firmwareOptions.uid, sizeof(firmwareOptions.uid));
+        firmwareOptions.hasUID = true;
+    }
+    else
+    {
+        firmwareOptions.hasUID = false;
+    }
+#else
     if (doc["uid"].is<JsonArray>())
     {
         copyArray(doc["uid"], firmwareOptions.uid, sizeof(firmwareOptions.uid));
@@ -330,6 +365,7 @@ static void options_LoadFromFlashOrFile(EspFlashStream &strmFlash)
     {
         firmwareOptions.hasUID = false;
     }
+#endif
     int32_t wifiInterval = doc["wifi-on-interval"] | -1;
     firmwareOptions.wifi_auto_on_interval = wifiInterval == -1 ? -1 : wifiInterval * 1000;
     strlcpy(firmwareOptions.home_wifi_ssid, doc["wifi-ssid"] | "", sizeof(firmwareOptions.home_wifi_ssid));

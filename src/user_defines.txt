@@ -9,13 +9,14 @@
 
 ### CUSTOM DF VERSIONS: ###
 
--DFIRMWARE_VERSION_DF='"DF-1.2.3"'
+-DRX_FIRMWARE_VERSION_DF='"DF-1.2.4"'
+-DTX_FIRMWARE_VERSION_DF='"DF-1.2.4"'
 -DHARDWARE_VERSION_DF='"DF-1.0.0"'
 
 ### BINDING PHRASE: ###
 # Uncomment the line below to use a hardcoded binding phrase
 # Leave commented to use traditional binding
--DMY_BINDING_PHRASE="nimbus"
+#-DMY_BINDING_PHRASE="nimbus"
 
 
 ### REGULATORY DOMAIN: ###
