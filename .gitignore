@@ -17,3 +17,8 @@ user_def.txt
 # pixi environments
 .pixi/*
 !.pixi/config.toml
+
+# Native ELRS SITL artifacts
+/build/
+/sitl/__pycache__/
+/sitl/tests/__pycache__/
