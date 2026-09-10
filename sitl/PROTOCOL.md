@@ -51,6 +51,10 @@ No reconnect-and-resume is attempted: a fresh process has fresh protocol state.
 | 5 | Advance (RX) | Empty | Count u16, followed by `count` records: timestamp u64, byte u8 |
 | 6 | TelemetryIn (RX) | One complete CRSF frame (4..64 bytes) | Payload dequeued by real ELRS telemetry parser, or empty |
 | 7 | Quit | Empty | Empty, followed by process exit |
+| 8 | EnableDownlink | Optional uint8 denominator N (empty = 2), once after Configure at time zero | Empty; N in 2/4/8/16/32/64/128; 8-byte OTA only |
+| 9 | QueueTelemetry (RX) | Complete CRC-valid CRSF frame | Empty; feeds production telemetry queue without draining it |
+| 10 | TransmitTelemetry (RX) | Empty, reserved RF slot time | OTA envelope, or empty if no queued message |
+| 11 | ReceiveTelemetry (TX) | OTA envelope from RX | Acceptance byte followed by a complete CRSF frame if reassembly finished |
 
 Configure exactly once at time zero, before other data operations. Default example:
 rate index 6 (250 Hz), mode 0 (HybridWide for 8-byte OTA), baud 420000. Rate indices
@@ -74,3 +78,31 @@ Identical retransmission of the old request returns its cached backpressure erro
 The IPC envelope must never be sent to a Betaflight serial receiver. Only bytes
 returned by Advance belong to CRSF. Their timestamps identify when each byte has
 finished virtual UART serialization and is available to the FC parser.
+
+## Optional downlink experiment
+
+EnableDownlink sets telemetry denominator N, defaulting to 2 for empty payloads.
+TransmitTelemetry/ReceiveTelemetry use slots where `(slot + 1) % N == 0`;
+Transmit/Receive use the remaining slots. This preserves the original even RC /
+odd telemetry timeline at 1:2. The downlink experiment starts at nonce 1:
+`OtaNonce = (slot + 1) % 256`, so the reserved telemetry slots have nonce
+divisible by N, matching the production HybridWide switch/ACK multiplexing.
+RC-only mode retains `OtaNonce = slot % 256`. Both endpoints must use the same
+revised harness; the outer IPC and CRSF/OTA packet formats are unchanged.
+The configured UID, frequency-hop sequence, nonce and packet CRC apply in both
+directions. Telemetry delivery cannot precede airtime completion and duplicate
+delivered telemetry slots are rejected. Omit a delivery to model a lost packet.
+
+QueueTelemetry uses the production RX queue, including its normal replacement
+rules. Above 75 percent occupancy, host admission returns explicit backpressure
+before feeding another frame. The caller may drop and count it or retry using a
+new request sequence later; replaying an identical IPC request returns its cached
+response. Legacy TelemetryIn is disabled in downlink mode because it drains the
+queue instead of transmitting it.
+
+RX StubbornSender fragmentation and TX StubbornReceiver reassembly use real OTA
+telemetry data payloads. Confirmations travel in subsequent RC packets through
+the production pack/unpack functions. A completed response carries the original
+CRSF frame before any handset/backpack address adaptation. It is not a physical
+handset UART implementation. The host reserves every Nth slot for data; it does not
+reproduce the firmware's link-statistics or synchronization schedule.

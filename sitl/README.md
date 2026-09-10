@@ -4,7 +4,8 @@ A small Linux host proof built from this fork's **production ELRS protocol sourc
 Independent TX and RX processes exchange real ELRS OTA packets through a coordinator.
 The RX runs the production `SerialCRSF` serializer and exports timestamped CRSF UART
 bytes. A read-only probe verifies them with the existing Betaflight fork's actual C
-receiver parser. MATLAB and the running Betaflight simulator are not connected.
+receiver parser. An optional downlink mode now accepts live FC telemetry from
+DFSim's observer and delivers reassembled frames to the separate TX process.
 
 **Scope: protocol SITL, not a complete ESP32/STM32 firmware emulator.** This build
 replaces the embedded TX/RX application loops with a deliberately small host loop.
@@ -80,6 +81,26 @@ set independently and **without `UNIT_TEST`**:
 - `common.cpp`: this fork's radio-rate tables, time-on-air values and UID seed logic.
 - `CRSF.cpp`: production CRSF helpers.
 - RX additionally: `SerialCRSF.cpp`, `SerialIO.cpp`, `telemetry.cpp`.
+- Downlink: RX `stubborn_sender.cpp`, TX `stubborn_receiver.cpp`.
+
+## Optional telemetry downlink
+
+After Configure, EnableDownlink selects an explicit 1:N experiment (empty
+payload defaults to 1:2; optional uint8 N supports 2/4/8/16/32/64/128).
+Every Nth slot is reserved for telemetry data. Starting at nonce 1 keeps
+telemetry slots aligned with production HybridWide ACK encoding. It currently
+supports 8-byte OTA only. RX
+QueueTelemetry runs the real telemetry parser/queue; TransmitTelemetry fragments
+its messages with StubbornSender. TX ReceiveTelemetry validates OTA and
+reassembles with StubbornReceiver. Subsequent ordinary RC packets carry its real
+acknowledgement bit back to RX according to the selected ratio/switch encoding.
+This is not the full embedded downlink scheduler:
+link-statistics/sync slots, acquisition and radio hardware remain unmodeled.
+
+The parent DFSim repository provides `tools/build_elrs_sitl.py`,
+`tools/run_elrs_telemetry.py`, and MATLAB `run_dfsim_elrs_telemetry` for a live
+Betaflight telemetry observer. See `matlab/ELRS_TELEMETRY.md` there. The original
+RC-only `demo.py` and Configure behavior remain supported unchanged.
 
 Only two existing source files need host guards: `native.h` gains a simulation clock
 and stream helpers; `common.cpp` omits constructing physical SX1280 hardware when
@@ -121,12 +142,14 @@ values, not simulated radio measurements.
 - Binding, on-air sync acquisition/resynchronization, model-match negotiation,
   clock drift, scanning, dynamic power, actual receiver timeout/failsafe logic.
 - LoRa/FLRC waveforms, real RF, collisions, calibrated losses or SPI pin emulation.
-- Reserved telemetry/sync slots or a full bidirectional RF telemetry scheduler.
+- A complete embedded bidirectional RF telemetry scheduler, including sync and
+  link-statistics slots. The optional experiment reserves data downlink slots.
   `TelemetryIn` does exercise the real FC telemetry parser/queue, but returns the
   parsed payload to the coordinator; it does not transmit it back through the air.
 - TX handset UART decoding (TX input is already raw CRSF channel values).
 - DVDA packet repetition modes. Unsupported configurations fail explicitly.
-- A live connection to Betaflight SITL or MATLAB.
+- Radio-derived RC control of a live Betaflight SITL. The parent simulator's
+  new live integration is telemetry observation, with its existing RC path retained.
 
 ## Future Betaflight connection
 

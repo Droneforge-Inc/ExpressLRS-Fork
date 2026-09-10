@@ -7,6 +7,16 @@
 #include <algorithm>
 #include <iterator>
 #include <string>
+#include "telemetry_protocol.h"
+#if TARGET_TX
+#include "stubborn_receiver.h"
+static StubbornReceiver telemetryReceiver;
+static uint8_t telemetryBuffer[64]{};
+#else
+#include "stubborn_sender.h"
+static StubbornSender telemetrySender;
+static uint8_t telemetryBuffer[64]{};
+#endif
 uint64_t sitl_time_us=0;
 firmware_options_t firmwareOptions{};
 extern const char device_name[]="DF ELRS SITL";
@@ -55,7 +65,7 @@ Bytes Firmware::handle(uint16_t op,uint64_t time,const Bytes &payload) {
 #else
         text+="rx";
 #endif
-        text+="; revision=" SITL_REVISION "; pre-synchronized; no RF PHY or embedded main loop";
+        text+="; revision=" SITL_REVISION "; downlink-v1; pre-synchronized; no RF PHY or embedded main loop";
         return Bytes(text.begin(),text.end());
     }
     if(op==Configure) {
@@ -81,18 +91,71 @@ Bytes Firmware::handle(uint16_t op,uint64_t time,const Bytes &payload) {
     }
     if(op==Quit){r.end();return out;}
     if(!configured)throw std::runtime_error("configure first");
+    if(op==EnableDownlink) {
+        // Empty payload retains the original 1:2 experiment for old clients.
+        const auto denominator=payload.empty()?2:r.get(1);
+        r.end();
+        if(denominator<2 || denominator>128 || (denominator & (denominator-1)))
+            throw std::runtime_error("telemetry denominator must be 2, 4, 8, 16, 32, 64 or 128");
+        if(time!=0 || haveSlot || downlink || ExpressLRS_currAirRate_Modparams->PayloadLength!=8)
+            throw std::runtime_error("enable downlink once before slots; 8-byte OTA only");
+        // Explicit protocol experiment: reserve every Nth slot for telemetry.
+        // Real ACK bits, fragmentation and CRC; no link-statistics/sync schedule.
+        // Production telemetry slots have nonce % denominator == 0. Start
+        // this pre-synchronized experiment at nonce 1, keeping slot zero RC.
+        // Reserving nonce N-1 instead starves HybridWide's ACK at ratio 1:8.
+        downlink=true;ExpressLRS_currTlmDenom=denominator;
+#if TARGET_TX
+        telemetryReceiver.setMaxPackageIndex(ELRS4_TELEMETRY_MAX_PACKAGES);
+        telemetryReceiver.SetDataToReceive(telemetryBuffer,sizeof(telemetryBuffer));
+#else
+        telemetrySender.setMaxPackageIndex(ELRS4_TELEMETRY_MAX_PACKAGES);
+        telemetrySender.UpdateTelemetryRate(1000000/ExpressLRS_currAirRate_Modparams->interval,denominator,1);
+#endif
+        return out;
+    }
 #if TARGET_TX
     if(op==Transmit) {
         uint32_t channels[16];for(auto &c:channels){c=r.get(2);if(c>1984)throw std::runtime_error("channel outside 0..1984");}r.end();
         uint64_t interval=ExpressLRS_currAirRate_Modparams->interval;
         if(time%interval)throw std::runtime_error("TX time must be on the configured RF slot grid");
         uint64_t slot=time/interval;
+        if(downlink && (slot+1)%ExpressLRS_currTlmDenom==0)throw std::runtime_error("slot reserved for telemetry");
         if(haveSlot && slot<=lastSlot)throw std::runtime_error("RF slot already transmitted");
-        OtaNonce=slot%256;OTA_Packet_s packet{};
-        OtaPackChannelData(&packet,channels,false,ExpressLRS_currTlmDenom);OtaGeneratePacketCrc(&packet);
+        OtaNonce=(slot+(downlink?1:0))%256;OTA_Packet_s packet{};
+        OtaPackChannelData(&packet,channels,downlink && telemetryReceiver.GetCurrentConfirm(),ExpressLRS_currTlmDenom);OtaGeneratePacketCrc(&packet);
         now=sitl_time_us=time;lastSlot=slot;haveSlot=true;
         put(out,slot,8);put(out,frequency(slot),4);put(out,ExpressLRS_currAirRate_Modparams->PayloadLength,1);
         auto bytes=reinterpret_cast<const uint8_t*>(&packet);out.insert(out.end(),bytes,bytes+ExpressLRS_currAirRate_Modparams->PayloadLength);
+        return out;
+    }
+    if(op==ReceiveTelemetry) {
+        if(!downlink)throw std::runtime_error("enable downlink first");
+        auto slot=r.get(8);auto freq=r.get(4);auto len=r.get(1);auto bytes=r.take(len);r.end();
+        uint64_t interval=ExpressLRS_currAirRate_Modparams->interval;
+        if(len!=8 || slot%ExpressLRS_currTlmDenom!=ExpressLRS_currTlmDenom-1U || slot>UINT64_MAX/interval-1)
+            throw std::runtime_error("invalid telemetry OTA length/slot");
+        if(time<slot*interval+ExpressLRS_currAirRate_RFperfParams->TOA)
+            throw std::runtime_error("telemetry RX cannot precede airtime");
+        if(haveTelemetrySlot && slot<=lastTelemetrySlot)throw std::runtime_error("duplicate telemetry slot");
+        OTA_Packet_s packet{};std::copy(bytes.begin(),bytes.end(),reinterpret_cast<uint8_t*>(&packet));
+        OtaNonce=(slot+(downlink?1:0))%256;
+        bool accepted=freq==frequency(slot) && packet.std.type==PACKET_TYPE_TLM &&
+            OtaValidatePacketCrc(&packet) && packet.std.tlm_dl.type==ELRS_TELEMETRY_TYPE_DATA;
+        now=sitl_time_us=time;lastTelemetrySlot=slot;haveTelemetrySlot=true;
+        put(out,accepted,1);
+        if(accepted) {
+            telemetryReceiver.ReceiveData(packet.std.tlm_dl.packageIndex,
+                packet.std.tlm_dl.payload,sizeof(packet.std.tlm_dl.payload));
+            if(telemetryReceiver.HasFinishedData()) {
+                const size_t length=telemetryBuffer[1]+2U;
+                if(length<4 || length>sizeof(telemetryBuffer) ||
+                   crsf_crc.calc(telemetryBuffer+2,length-3)!=telemetryBuffer[length-1])
+                    throw std::runtime_error("invalid reassembled CRSF telemetry");
+                out.insert(out.end(),telemetryBuffer,telemetryBuffer+length);
+                telemetryReceiver.Unlock();
+            }
+        }
         return out;
     }
 #else
@@ -104,13 +167,15 @@ Bytes Firmware::handle(uint16_t op,uint64_t time,const Bytes &payload) {
         if(time<slot*interval+ExpressLRS_currAirRate_RFperfParams->TOA)
             throw std::runtime_error("RX cannot precede completion of radio airtime");
         if(haveSlot && slot<=lastSlot)throw std::runtime_error("duplicate/out-of-order radio slot");
+        if(downlink && (slot+1)%ExpressLRS_currTlmDenom==0)throw std::runtime_error("slot reserved for telemetry");
         if(uart.size()>4000)throw std::runtime_error("UART queue full; advance and drain before receiving more");
         OTA_Packet_s packet{};std::copy(bytes.begin(),bytes.end(),reinterpret_cast<uint8_t*>(&packet));
-        OtaNonce=slot%256;
+        OtaNonce=(slot+(downlink?1:0))%256;
         bool accepted=freq==frequency(slot) && packet.std.type==PACKET_TYPE_RCDATA && OtaValidatePacketCrc(&packet);
         now=sitl_time_us=time;lastSlot=slot;haveSlot=true;
         if(accepted) {
-            OtaUnpackChannelData(&packet,ChannelData,ExpressLRS_currTlmDenom);
+            bool confirm=OtaUnpackChannelData(&packet,ChannelData,ExpressLRS_currTlmDenom);
+            if(downlink)telemetrySender.ConfirmCurrentPayload(confirm);
             serial.bytes.clear();crsf.sendRCFrame(true,false,ChannelData);
             uint64_t start=std::max(now,uartEnd);
             for(size_t i=0;i<serial.bytes.size();++i)
@@ -120,13 +185,43 @@ Bytes Firmware::handle(uint16_t op,uint64_t time,const Bytes &payload) {
         put(out,accepted,1);return out;
     }
     if(op==Advance) {r.end();now=sitl_time_us=time;return drain();}
-    if(op==TelemetryIn) {
+    if(op==TransmitTelemetry) {
+        r.end();
+        if(!downlink)throw std::runtime_error("enable downlink first");
+        const uint64_t interval=ExpressLRS_currAirRate_Modparams->interval;
+        const uint64_t slot=time/interval;
+        if(time%interval || (slot+1)%ExpressLRS_currTlmDenom!=0)throw std::runtime_error("telemetry TX requires reserved RF slot grid");
+        if(haveTelemetrySlot && slot<=lastTelemetrySlot)throw std::runtime_error("duplicate telemetry slot");
+        if(!telemetrySender.IsActive()) {
+            uint8_t length=0;
+            if(telemetry.GetNextPayload(&length,telemetryBuffer))
+                telemetrySender.SetDataToTransmit(telemetryBuffer,length);
+        }
+        now=sitl_time_us=time;lastTelemetrySlot=slot;haveTelemetrySlot=true;
+        if(!telemetrySender.IsActive())return out;
+        OtaNonce=(slot+(downlink?1:0))%256;OTA_Packet_s packet{};packet.std.type=PACKET_TYPE_TLM;
+        packet.std.tlm_dl.type=ELRS_TELEMETRY_TYPE_DATA;
+        packet.std.tlm_dl.packageIndex=telemetrySender.GetCurrentPayload(
+            packet.std.tlm_dl.payload,sizeof(packet.std.tlm_dl.payload));
+        OtaGeneratePacketCrc(&packet);
+        put(out,slot,8);put(out,frequency(slot),4);put(out,8,1);
+        auto bytes=reinterpret_cast<const uint8_t*>(&packet);out.insert(out.end(),bytes,bytes+8);
+        return out;
+    }
+    if(op==TelemetryIn || op==QueueTelemetry) {
+        if(op==QueueTelemetry && !downlink)throw std::runtime_error("enable downlink first");
+        if(op==TelemetryIn && downlink)throw std::runtime_error("use QueueTelemetry with downlink");
         // Complete bounded CRSF frames only; validate before passing to firmware parser.
         if(payload.size()<4 || payload.size()>64 || payload[1]+2U!=payload.size() ||
            crsf_crc.calc(payload.data()+2,payload.size()-3)!=payload.back())
             throw std::runtime_error("invalid CRSF telemetry frame");
+        // Bound admission before the production queue can evict older frames.
+        // The coordinator must explicitly account for rejected admission.
+        if(op==QueueTelemetry && telemetry.GetFifoFullPct()>75)
+            throw std::runtime_error("telemetry queue backpressure");
         now=sitl_time_us=time;
         for(auto b:payload)telemetry.RXhandleUARTin(b);
+        if(op==QueueTelemetry)return out;
         uint8_t len=0;uint8_t data[64]{};
         if(telemetry.GetNextPayload(&len,data))out.assign(data,data+len);
         return out; // Parsed FC telemetry, not yet transmitted across an RF downlink.

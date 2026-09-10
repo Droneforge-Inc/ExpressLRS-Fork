@@ -8,6 +8,7 @@ from pathlib import Path
 MAGIC = 0x4553494C
 HEADER = struct.Struct('!IHHIIQ')
 HELLO, CONFIGURE, TRANSMIT, RECEIVE, ADVANCE, TELEMETRY, QUIT = range(1, 8)
+ENABLE_DOWNLINK, QUEUE_TELEMETRY, TRANSMIT_TELEMETRY, RECEIVE_TELEMETRY = range(8, 12)
 
 
 def packet(op, seq, time_us, payload=b''):

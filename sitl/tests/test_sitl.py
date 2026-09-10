@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from client import Peer, HELLO, CONFIGURE, TRANSMIT, RECEIVE, ADVANCE, TELEMETRY, QUIT, packet, decode_crsf, crc8
+from client import ENABLE_DOWNLINK, QUEUE_TELEMETRY, TRANSMIT_TELEMETRY, RECEIVE_TELEMETRY
 
 BINS = None
 
@@ -196,6 +197,73 @@ class SitlTests(unittest.TestCase):
         result=subprocess.run([str(probe)],input=''.join(f'{t} {b}\n' for t,b in corrupted),
                               text=True,capture_output=True,timeout=5)
         self.assertEqual(result.returncode,3);self.assertEqual(result.stdout,'')
+
+    def test_downlink_real_fragments_ack_and_loss(self):
+        tx, rx = self.peers(rate=10)
+        for peer in (tx,rx):peer.call(ENABLE_DOWNLINK)
+        frames=[]
+        for kind,body in [(0xd1,struct.pack('!6h',23,-42,9,0,0,100)),
+                          (0x08,struct.pack('!HH',43,0)+bytes([0,0,0,99]))]:
+            frame=bytes([0xc8,len(body)+2,kind])+body
+            frame+=bytes([crc8(frame[2:])]);frames.append(frame)
+            rx.call(QUEUE_TELEMETRY,0,frame)
+        actual=[]; rejected=0; uplink=[]
+        for slot in range(80):
+            t=slot*tx.interval
+            uplink.extend(rx.advance(t))
+            if slot%2==0:
+                ota=tx.transmit(t,[992]*16)
+                # Lose an uplink too: the telemetry sender must wait for an ACK.
+                if slot!=6:rx.call(RECEIVE,t+tx.airtime,ota)
+            else:
+                ota=rx.call(TRANSMIT_TELEMETRY,t)
+                if not ota or slot==3:continue
+                if slot==5:ota=ota[:-1]+bytes([ota[-1]^1])
+                data=tx.call(RECEIVE_TELEMETRY,t+tx.airtime,ota)
+                if not data[0]:rejected+=1
+                if len(data)>1:actual.append(data[1:])
+        self.assertEqual(actual,frames)
+        self.assertEqual(rejected,1)
+        self.assertGreater(len(uplink),26)
+        with self.assertRaisesRegex(ValueError,'reserved'):
+            tx.transmit(81*tx.interval,[992]*16)
+
+    def test_configurable_rates_ratios_and_ack_loss(self):
+        # Cross the 8-slot wide-switch ACK boundary, nonce wrap, low-rate long
+        # airtime, and high-rate FLRC with real production OTA/CRSF codecs.
+        for rate,ratio in ((9,2),(7,4),(6,8),(10,16),(0,32),(10,64),(10,128)):
+            with self.subTest(rate=rate,ratio=ratio):
+                tx,rx=self.peers(rate=rate)
+                for peer in (tx,rx):
+                    with self.assertRaisesRegex(ValueError,'denominator'):
+                        peer.call(ENABLE_DOWNLINK,payload=b'\x03')
+                    peer.call(ENABLE_DOWNLINK,payload=bytes([ratio]))
+                frame=b'\xc8\x0e\xd1'+bytes(range(12))
+                frame+=bytes([crc8(frame[2:])]);rx.call(QUEUE_TELEMETRY,0,frame)
+                actual=[]
+                for slot in range(ratio*14):
+                    t=slot*tx.interval;rx.advance(t)
+                    if (slot+1)%ratio:
+                        ota=tx.transmit(t,[992]*16)
+                        if slot!=ratio:rx.call(RECEIVE,t+tx.airtime,ota)
+                    else:
+                        ota=rx.call(TRANSMIT_TELEMETRY,t)
+                        if not ota or slot==ratio-1:continue
+                        data=tx.call(RECEIVE_TELEMETRY,t+tx.airtime,ota)
+                        self.assertEqual(data[0],1)
+                        if len(data)>1:actual.append(data[1:])
+                self.assertEqual(actual,[frame])
+
+    def test_downlink_capacity_and_configuration_guards(self):
+        tx,rx=self.peers(rate=10)
+        for peer in (tx,rx):peer.call(ENABLE_DOWNLINK)
+        frame=b'\xc8\x0e\xd1'+bytes(12)
+        frame+=bytes([crc8(frame[2:])])
+        for _ in range(23):rx.call(QUEUE_TELEMETRY,0,frame)
+        with self.assertRaisesRegex(ValueError,'backpressure'):rx.call(QUEUE_TELEMETRY,0,frame)
+        with self.assertRaisesRegex(ValueError,'use QueueTelemetry'):rx.call(TELEMETRY,0,frame)
+        with self.assertRaisesRegex(ValueError,'once'):rx.call(ENABLE_DOWNLINK)
+        with self.assertRaisesRegex(ValueError,'invalid CRSF'):rx.call(QUEUE_TELEMETRY,0,frame[:-1])
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--bin-dir',type=Path,required=True)
