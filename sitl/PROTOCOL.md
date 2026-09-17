@@ -54,13 +54,18 @@ No reconnect-and-resume is attempted: a fresh process has fresh protocol state.
 | 8 | EnableDownlink | Optional uint8 denominator N (empty = 2), once after Configure at time zero | Empty; N in 2/4/8/16/32/64/128; 8-byte OTA only |
 | 9 | QueueTelemetry (RX) | Complete CRC-valid CRSF frame | Empty; feeds production telemetry queue without draining it |
 | 10 | TransmitTelemetry (RX) | Empty, reserved RF slot time | OTA envelope, or empty if no queued message |
-| 11 | ReceiveTelemetry (TX) | OTA envelope from RX | Acceptance byte followed by a complete CRSF frame if reassembly finished |
+| 11 | ReceiveTelemetry (TX) | OTA envelope from RX | Acceptance byte followed by a complete CRSF frame if reassembly finished; DF3 session/health frames are consumed internally in v2 mode |
+| 12 | EnableUplink | Empty for historical reliable-D5 comparison, or one byte `02` for production DF3 v2 | Empty; once after EnableDownlink at time zero, before slots |
+| 13 | QueueUplink (TX) | Complete CRC-valid extended CRSF frame addressed to FC or RX | Empty; D5 additionally requires a valid reference payload in v2 mode |
+| 14 | ReferenceStatus | Empty | State u8, complete/ready u8, session u32, epoch u16; TX appends the 15-byte production E5 CRSF status frame |
+| 15 | ReferenceReset | Empty | Empty; resets the reference session and pending reference state only |
 
 Configure exactly once at time zero, before other data operations. Default example:
 rate index 6 (250 Hz), mode 0 (HybridWide for 8-byte OTA), baud 420000. Rate indices
 come from this fork's `common.cpp` SX1280 table; they are not generic ELRS enum IDs.
 Modes: 0=Wide/8ch, 1=Hybrid/16ch, 2=12ch (13-byte OTA only). DVDA rates are rejected.
-Reset means starting a new process, which also resets codec static state.
+A full radio reset means starting a new process, which also resets codec static
+state. ReferenceReset is a narrower fault-injection operation described below.
 
 OTA envelope: TX slot index u64, SX1280 frequency register u32, OTA length u8, then
 8 or 13 bytes from `OtaGeneratePacketCrc`. The coordinator transports the envelope
@@ -104,5 +109,32 @@ RX StubbornSender fragmentation and TX StubbornReceiver reassembly use real OTA
 telemetry data payloads. Confirmations travel in subsequent RC packets through
 the production pack/unpack functions. A completed response carries the original
 CRSF frame before any handset/backpack address adaptation. It is not a physical
-handset UART implementation. The host reserves every Nth slot for data; it does not
-reproduce the firmware's link-statistics or synchronization schedule.
+handset UART implementation. The host reserves every Nth slot for telemetry. With EnableUplink it includes
+link-statistics acknowledgements and the production burst limit. Synchronization
+and the complete embedded slot scheduler remain outside this model.
+
+## Reference uplink and lifecycle
+
+V2 requires rate index 10, switch mode 0 (wide), 8-byte OTA and telemetry denominator
+2 on both peers. Every other uplink opportunity remains RC. Reference snapshots
+use production DF3 fragmentation/parity; management messages and session commands
+use StubbornSender. Reference fragments also carry the downlink ACK bit. The RX
+consumes session commands locally and forwards completed D5 frames as ordinary
+CRSF UART bytes. A legacy peer does not negotiate v2 and receives no marked stream.
+
+Empty EnableUplink selects an explicitly historical comparison fixture: latest
+waiting D5 references share the reliable uplink with ordered management messages.
+This path is native-test-only. Unknown versions and repeated enable requests fail
+without altering the previously selected mode. Malformed QueueUplink requests do
+not replace pending references or advance virtual time.
+
+ReferenceStatus reports TX state 0=disabled, 1=negotiating, 2=streaming, 3=failed;
+its second byte indicates readiness (matching RX heartbeat with a completed
+reference). RX reports active-session and completed-reference booleans instead.
+Status reads do not advance time. ReferenceReset advances time and clears the
+session, assembly/sender, pending ingress and reference-health bookkeeping. It
+preserves configuration, RF slot history, reliable management/telemetry queues,
+UART events and the selected uplink mode. Use a fresh process for a full reboot.
+
+The IPC version remains 1; these are additive operations. The DF3 radio transport
+version is separately 2. See [the production transport contract](../src/lib/Df3/README.md).

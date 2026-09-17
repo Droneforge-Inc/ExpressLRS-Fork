@@ -254,6 +254,35 @@ class SitlTests(unittest.TestCase):
                         if len(data)>1:actual.append(data[1:])
                 self.assertEqual(actual,[frame])
 
+    def test_df3_latest_sensor_queue_and_priority_survive_many_overwrites(self):
+        tx,rx=self.peers(rate=10)
+        for peer in (tx,rx):peer.call(ENABLE_DOWNLINK)
+        def frame(kind,payload):
+            body=bytes([kind])+payload
+            return bytes([0xc8,len(body)+1])+body+bytes([crc8(body)])
+        attitude=frame(0x1e,bytes(6))
+        rx.call(QUEUE_TELEMETRY,0,attitude)
+        for seq in range(256):
+            state=frame(0xd6,bytes([1,0])+struct.pack('!HHI',1,seq,seq*132)+bytes(24))
+            imu=frame(0xd1,struct.pack('!6h',seq,0,0,0,0,100))
+            optrange=frame(0xd3,struct.pack('!HhhBBH',1000,seq,0,1,200,0))
+            health=frame(0xd9,struct.pack('!BBIHH',2,1,123,7,seq))
+            for message in (state,health,imu,optrange):rx.call(QUEUE_TELEMETRY,0,message)
+        actual=[]
+        for slot in range(300):
+            t=slot*tx.interval
+            rx.advance(t)
+            if slot%2==0:
+                ota=tx.transmit(t,[992]*16)
+                self.assertEqual(rx.call(RECEIVE,t+tx.airtime,ota),b'\x01')
+            else:
+                ota=rx.call(TRANSMIT_TELEMETRY,t)
+                if ota:
+                    data=tx.call(RECEIVE_TELEMETRY,t+tx.airtime,ota)
+                    self.assertEqual(data[0],1)
+                    if len(data)>1:actual.append(data[1:])
+        self.assertEqual(actual,[state,health,attitude,imu,optrange])
+
     def test_downlink_capacity_and_configuration_guards(self):
         tx,rx=self.peers(rate=10)
         for peer in (tx,rx):peer.call(ENABLE_DOWNLINK)

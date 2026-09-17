@@ -77,11 +77,17 @@ static struct
     {CRSF_FRAMETYPE_ARDUPILOT_RESP, statusText},
     {CRSF_FRAMETYPE_DEVICE_INFO, extended_dest_origin},
     {CRSF_FRAMETYPE_PARAMETER_SETTINGS_ENTRY, comp_OVERWRITE },
+    {CRSF_FRAMETYPE_DF_STATE, comp_OVERWRITE}, // Replace waiting state, never the active OTA transfer.
+    {CRSF_FRAMETYPE_DF_REFERENCE_HEALTH, comp_OVERWRITE}, // 1 Hz radio-session health.
 };
 
 inline bool isPrioritised(const crsf_frame_type_e frameType)
 {
-    return frameType >= CRSF_FRAMETYPE_DEVICE_PING && frameType <= CRSF_FRAMETYPE_PARAMETER_WRITE;
+    // Navigation state is consumed by ground trajectory planning. Its waiting
+    // queue entry is latest-only, and one bounded native frame precedes legacy
+    // diagnostic telemetry. The active OTA frame is never interrupted.
+    return frameType == CRSF_FRAMETYPE_DF_STATE || frameType == CRSF_FRAMETYPE_DF_REFERENCE_HEALTH ||
+        (frameType >= CRSF_FRAMETYPE_DEVICE_PING && frameType <= CRSF_FRAMETYPE_PARAMETER_WRITE);
 }
 
 Telemetry::Telemetry()
@@ -149,6 +155,7 @@ void Telemetry::ResetState()
     telemetry_state = TELEMETRY_IDLE;
     currentTelemetryByte = 0;
     prioritizedCount = 0;
+    df3StreamDetected = false;
     messagePayloads.flush();
 }
 
@@ -304,6 +311,17 @@ void Telemetry::AppendTelemetryPackage(uint8_t *package)
 #if defined(PLATFORM_ESP32) && SOC_CPU_CORES_NUM > 1
     std::lock_guard<std::mutex> lock(mutex);
 #endif
+    // Preserve legacy custom-sensor FIFO behavior unless this FC explicitly
+    // publishes DF3 v1 navigation state. DF3 needs fresh diagnostics alongside
+    // state downlink; only waiting frames are superseded, never active OTA data.
+    if (header->type == CRSF_FRAMETYPE_DF_STATE && messageSize == 38 && package[3] == 1)
+    {
+        df3StreamDetected = true;
+    }
+    if (df3StreamDetected && (header->type == CRSF_FRAMETYPE_DF_RAW_IMU || header->type == CRSF_FRAMETYPE_DF_OPTRANGE))
+    {
+        comparator = comp_OVERWRITE;
+    }
     // If we have a comparator or this is a 'broadcast' message we will look for a matching message in the queue and default to overwrite if we find one
     uint16_t overwritePosition = 0;
     if (comparator != nullptr || header->type < CRSF_FRAMETYPE_DEVICE_PING)
@@ -325,17 +343,12 @@ void Telemetry::AppendTelemetryPackage(uint8_t *package)
             i += 1 + SIZE(size);
         }
     }
-    if (isPrioritised(header->type))
-    {
-        prioritizedCount++;
-    }
-
     switch (action)
     {
     case ACTION_IGNORE:
         break;
     case ACTION_OVERWRITE:
-        // Check again because our initial check was performed without locking
+        // Replacing a live entry in place does not add another priority item.
         if (!IS_DEL(messagePayloads[overwritePosition]))
         {
             if (messagePayloads[overwritePosition] >= messageSize)
@@ -348,17 +361,29 @@ void Telemetry::AppendTelemetryPackage(uint8_t *package)
             }
             // Mark the current queued entry as deleted
             messagePayloads.set(overwritePosition, SET_DEL(messagePayloads[overwritePosition]));
+            if (isPrioritised(header->type))
+            {
+                prioritizedCount--;
+            }
         }
         // fallthrough to APPEND
     default:
         // If there's NOT enough room on the FIFO for this message, pop until there is
         while (!messagePayloads.available(messageSize + 1))
         {
-            const uint8_t sz = SIZE(messagePayloads.pop());
-            messagePayloads.skip(sz);
+            const uint8_t size = messagePayloads.pop();
+            if (!IS_DEL(size) && isPrioritised((crsf_frame_type_e)messagePayloads[CRSF_TELEMETRY_TYPE_INDEX]))
+            {
+                prioritizedCount--;
+            }
+            messagePayloads.skip(SIZE(size));
         }
         messagePayloads.push(messageSize);
         messagePayloads.pushBytes(package, messageSize);
+        if (isPrioritised(header->type))
+        {
+            prioritizedCount++;
+        }
         break;
     }
 }

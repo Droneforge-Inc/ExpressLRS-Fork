@@ -1,6 +1,8 @@
 #include "rxtx_common.h"
 
 #include "CRSFHandset.h"
+#include "NimbusLinkSnapshot.h"
+#include "Df3ReferenceSession.h"
 #include "dynpower.h"
 #include "lua.h"
 #include "msp.h"
@@ -80,6 +82,7 @@ static enum
 volatile uint32_t LastTLMpacketRecvMillis = 0;
 uint32_t TLMpacketReported = 0;
 static bool commitInProgress = false;
+static NimbusLinkSnapshot nimbusLinkSnapshot;
 static bool lastSentRfLinked = false;
 static constexpr uint8_t FC_MCU_UID_LEN = 12;
 static constexpr uint8_t MSP_V2_FUNCTION_OFFSET = 7;
@@ -112,6 +115,114 @@ static TxTlmRcvPhase_e TelemetryRcvPhase = ttrpTransmitting;
 StubbornReceiver TelemetryReceiver;
 StubbornSender MspSender;
 uint8_t CRSFinBuffer[CRSF_MAX_PACKET_LEN + 1];
+
+
+// D5 ingress is a separate latest-only mailbox; it never enters StubbornSender.
+static FIFO<1> df3IngressLock, df3SenderLock;
+static dfstream::Frame df3Ingress;
+static uint32_t df3IngressAt = 0;
+static bool df3IngressPending = false;
+static dfstream::Sender df3Sender;
+static dfstream::TxSession df3Session;
+static volatile bool df3Streaming = false;
+
+static bool ICACHE_RAM_ATTR df3ProfileAllowed()
+{
+    return connectionState == connected && connectionHasModelMatch && teamraceHasModelMatch &&
+           !InBindingMode && !firmwareOptions.is_airport && config.GetLinkMode() != TX_MAVLINK_MODE &&
+           !OtaIsFullRes && ExpressLRS_currAirRate_Modparams->index == dfstream::kRateIndex &&
+           OtaSwitchModeCurrent == smWideOr8ch && ExpressLRS_currTlmDenom == dfstream::kTelemetryRatio;
+}
+static void df3ReferenceIngress(const uint8_t *data, uint8_t length)
+{
+    dfstream::Frame frame;
+    if (length != frame.size())
+        return;
+    std::copy_n(data, frame.size(), frame.begin());
+    if (!dfstream::valid(frame))
+        return;
+    df3IngressLock.lock();
+    df3Ingress = frame;
+    df3IngressAt = micros();
+    df3IngressPending = true;
+    df3IngressLock.unlock();
+}
+static bool ICACHE_RAM_ATTR df3NextPacket(uint8_t &header, uint8_t *payload)
+{
+    if (!df3Streaming || !df3ProfileAllowed() || !dfstream::dataSlot(OtaNonce))
+        return false;
+    df3SenderLock.lock();
+    const bool result = df3Sender.next(micros(), TelemetryReceiver.GetCurrentConfirm(), header, payload);
+    df3SenderLock.unlock();
+    return result;
+}
+static void df3Service()
+{
+    const uint32_t now = micros();
+    const bool freshRc = handset && handset->GetRCdataLastRecv() && uint32_t(now - handset->GetRCdataLastRecv()) < dfstream::kRcFreshnessUs;
+    const bool armed = !freshRc || handset->IsArmed();
+    const bool allowed = df3ProfileAllowed() && freshRc;
+    df3Session.tick(now, allowed, armed);
+    dfstream::Frame input;
+    uint32_t at = 0;
+    bool have = false;
+    df3IngressLock.lock();
+    if (df3IngressPending)
+    {
+        input = df3Ingress;
+        at = df3IngressAt;
+        have = true;
+        df3IngressPending = false;
+    }
+    df3IngressLock.unlock();
+    if (have && uint32_t(now - at) <= dfstream::kStartDeadlineUs)
+    {
+        const auto epoch = dfstream::referenceEpoch(input);
+        if (df3Session.epoch && epoch != df3Session.epoch)
+            df3Session.reset();
+        if (allowed && !armed && dfstream::referenceInactive(input) &&
+            (df3Session.state == dfstream::Disabled || df3Session.state == dfstream::Failed))
+        {
+#if defined(PLATFORM_ESP32)
+            uint32_t nonce = esp_random();
+#else
+            uint32_t nonce = os_random();
+#endif
+            df3Session.begin(nonce ? nonce : 1, epoch, now);
+        }
+    }
+    df3SenderLock.lock();
+    df3Streaming = df3Session.state == dfstream::Streaming && allowed;
+    if (!df3Streaming)
+        df3Sender.reset(0);
+    else
+    {
+        if (df3Sender.session != df3Session.session)
+            df3Sender.reset(df3Session.session);
+        if (have && uint32_t(now - at) <= dfstream::kStartDeadlineUs && dfstream::referenceEpoch(input) == df3Session.epoch)
+            df3Sender.offer(input, at);
+    }
+    df3SenderLock.unlock();
+    uint8_t *queued = nullptr, length = 0;
+    CRSF::GetMspMessage(&queued, &length);
+    dfstream::Control control;
+    if (!armed && !length && !MspSender.IsActive() && df3Session.nextControl(now, control))
+        CRSF::AddMspMessage(control.size(), control.data());
+    // Local USB status only. RX heartbeat is a separate 1 Hz aggregate report.
+    static uint32_t lastStatus = 0;
+    static uint8_t lastState = 255;
+    static bool lastReady = false;
+    const bool ready = allowed && df3Session.ready();
+    if (uint32_t(now - lastStatus) >= dfstream::kLocalStatusPeriodUs || lastState != df3Session.state || lastReady != ready)
+    {
+        auto status = dfstream::localStatus(df3Session, allowed);
+        if (handset)
+            handset->sendTelemetryToTX(status.data());
+        lastStatus = now;
+        lastState = df3Session.state;
+        lastReady = ready;
+    }
+}
 
 static void sendBindUidTelemetry();
 static void SetBindUidFromCrsf(const uint8_t *newUid);
@@ -594,11 +705,18 @@ void ICACHE_RAM_ATTR SendRCdataToRF()
     }
     else
     {
+        uint8_t df3Header = 0;
         if (firmwareOptions.is_airport)
         {
             OtaPackAirportData(&otaPkt, &apInputBuffer);
         }
-        else if ((NextPacketIsMspData && MspSender.IsActive()) || dontSendChannelData)
+        else if (df3NextPacket(df3Header, otaPkt.std.msp_ul.payload))
+        {
+            otaPkt.std.type = PACKET_TYPE_MSPDATA;
+            otaPkt.std.msp_ul.packageIndex = df3Header & ~dfstream::kTelemetryAck;
+            otaPkt.std.msp_ul.tlmFlag = (df3Header & dfstream::kTelemetryAck) != 0;
+        }
+        else if (((df3Streaming ? dfstream::dataSlot(OtaNonce) : NextPacketIsMspData) && MspSender.IsActive()) || dontSendChannelData)
         {
             otaPkt.std.type = PACKET_TYPE_MSPDATA;
             if (OtaIsFullRes)
@@ -614,7 +732,7 @@ void ICACHE_RAM_ATTR SendRCdataToRF()
                 otaPkt.std.msp_ul.packageIndex = MspSender.GetCurrentPayload(
                     otaPkt.std.msp_ul.payload,
                     sizeof(otaPkt.std.msp_ul.payload));
-                if (config.GetLinkMode() == TX_MAVLINK_MODE)
+                if (config.GetLinkMode() == TX_MAVLINK_MODE || df3Streaming)
                     otaPkt.std.msp_ul.tlmFlag = TelemetryReceiver.GetCurrentConfirm();
             }
 
@@ -1004,7 +1122,7 @@ static bool isRfLinkActive()
            teamraceHasModelMatch;
 }
 
-static void sendRfLinkStateTelemetry(bool linked)
+static void sendRfLinkStateTelemetry(bool linked, bool notifyBackpack)
 {
     constexpr uint8_t payloadLen = 1;
     uint8_t frame[CRSF_FRAME_NOT_COUNTED_BYTES + CRSF_FRAME_SIZE(payloadLen)];
@@ -1017,7 +1135,8 @@ static void sendRfLinkStateTelemetry(bool linked)
     {
         handset->sendTelemetryToTX(frame);
     }
-    sendCRSFTelemetryToBackpack(frame);
+    if (notifyBackpack)
+        sendCRSFTelemetryToBackpack(frame);
 }
 
 static void resetFlightControllerUid()
@@ -1633,6 +1752,7 @@ static void cyclePower()
 
 void setup()
 {
+    CRSF::ReferenceHandler = df3ReferenceIngress;
     if (setupHardwareFromOptions())
     {
         setupTarget();
@@ -1753,10 +1873,16 @@ void loop()
     }
 
     bool rfLinked = isRfLinkActive();
-    if (rfLinked != lastSentRfLinked)
+    if (nimbusLinkSnapshot.due(now, rfLinked))
     {
-        sendRfLinkStateTelemetry(rfLinked);
+        // Backpack notifications retain their existing transition-only behavior.
+        sendRfLinkStateTelemetry(rfLinked, rfLinked != lastSentRfLinked);
         lastSentRfLinked = rfLinked;
+        sendBindUidTelemetry();
+        // The UID cache is reset on RF loss/change. Never replay a stale drone
+        // identity while disconnected or before a new UID reply is validated.
+        if (rfLinked && flightControllerUidValid)
+            sendFlightControllerUidTelemetry();
     }
 
     // Update UI devices
@@ -1776,6 +1902,7 @@ void loop()
     executeDeferredFunction(micros());
 
     HandleUARTin();
+    df3Service();
 
     if (connectionState > MODE_STATES)
     {
@@ -1824,7 +1951,8 @@ void loop()
         else
         {
             const bool isUidResponse = isFlightControllerUidResponse(CRSFinBuffer);
-            const bool consumed = isUidResponse && handleFlightControllerUidResponse(CRSFinBuffer);
+            const bool consumed = df3Session.receive(CRSFinBuffer, CRSFinBuffer[1] + 2, micros()) ||
+                (isUidResponse && handleFlightControllerUidResponse(CRSFinBuffer));
             // Send all other tlm to handset
             if (!consumed && !isUidResponse && handset != nullptr)
             {

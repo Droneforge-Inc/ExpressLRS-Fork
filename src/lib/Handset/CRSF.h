@@ -16,6 +16,8 @@ public:
     static void AddMspMessage(uint8_t length, uint8_t *data);
     static void AddMspMessage(mspPacket_t *packet, uint8_t destination);
     static void ResetMspQueue();
+    // Installed by the DF3-capable TX. Consume D5 before the reliable queue.
+    static void (*ReferenceHandler)(const uint8_t *data, uint8_t length);
 
     static void GetDeviceInformation(uint8_t *frame, uint8_t fieldCount);
     static void SetMspV2Request(uint8_t *frame, uint16_t function, uint8_t *payload, uint8_t payloadLength);

@@ -4,8 +4,8 @@ A small Linux host proof built from this fork's **production ELRS protocol sourc
 Independent TX and RX processes exchange real ELRS OTA packets through a coordinator.
 The RX runs the production `SerialCRSF` serializer and exports timestamped CRSF UART
 bytes. A read-only probe verifies them with the existing Betaflight fork's actual C
-receiver parser. An optional downlink mode now accepts live FC telemetry from
-DFSim's observer and delivers reassembled frames to the separate TX process.
+receiver parser. Optional bidirectional modes exercise live FC telemetry, reliable
+management uplink and the production DF3 reference transport/session code.
 
 **Scope: protocol SITL, not a complete ESP32/STM32 firmware emulator.** This build
 replaces the embedded TX/RX application loops with a deliberately small host loop.
@@ -81,7 +81,9 @@ set independently and **without `UNIT_TEST`**:
 - `common.cpp`: this fork's radio-rate tables, time-on-air values and UID seed logic.
 - `CRSF.cpp`: production CRSF helpers.
 - RX additionally: `SerialCRSF.cpp`, `SerialIO.cpp`, `telemetry.cpp`.
-- Downlink: RX `stubborn_sender.cpp`, TX `stubborn_receiver.cpp`.
+- Both directions: `stubborn_sender.cpp`, `stubborn_receiver.cpp`.
+- DF3: shared `src/lib/Df3` packet codec and session lifecycle; the host supplies
+  its own slot loop, not the embedded ISR/main-loop adapter.
 
 ## Optional telemetry downlink
 
@@ -94,8 +96,9 @@ QueueTelemetry runs the real telemetry parser/queue; TransmitTelemetry fragments
 its messages with StubbornSender. TX ReceiveTelemetry validates OTA and
 reassembles with StubbornReceiver. Subsequent ordinary RC packets carry its real
 acknowledgement bit back to RX according to the selected ratio/switch encoding.
-This is not the full embedded downlink scheduler:
-link-statistics/sync slots, acquisition and radio hardware remain unmodeled.
+Without uplink enabled, this mode sends telemetry data only. EnableUplink also
+models link-statistics packets carrying management acknowledgements, using the
+production burst limit. Sync acquisition and radio hardware remain unmodeled.
 
 The parent DFSim repository provides `tools/build_elrs_sitl.py`,
 `tools/run_elrs_telemetry.py`, and MATLAB `run_dfsim_elrs_telemetry` for a live
@@ -106,6 +109,28 @@ Only two existing source files need host guards: `native.h` gains a simulation c
 and stream helpers; `common.cpp` omits constructing physical SX1280 hardware when
 `TARGET_SITL` is set. Existing embedded build paths are preserved. Other source is
 under `sitl/`; the host does not compile a fake copy of the ELRS codec.
+
+## DF3 and comparison tests
+
+EnableUplink follows EnableDownlink, before any slots. Payload `02` selects the
+production v2 reference stream; empty payload retains the **historical reliable-D5
+comparison** implemented only in `tests/fixtures/LegacyReferenceQueue.h`. Firmware
+builds never include that fixture. Management traffic uses the production CRSF
+queue and StubbornSender in both modes.
+
+DF3 negotiates while disarmed, sends bounded latest-only snapshots with one parity
+fragment, and retains RC opportunities while data is pending. Tests cover an old
+RX, one-sided reference-session reset, SDK epoch changes, malformed ingress,
+rejected mode changes, and stale references. `ReferenceReset` resets only the
+reference session, not the full radio/CRSF state; restart a process to model that.
+
+CTest also runs standalone session, fragment-loss/parity, local-link snapshot,
+and telemetry-queue tests. Assertions remain active in optimized builds, and
+`SITL_SANITIZE` instruments all native targets. Tests of the shared transport
+headers use C++11, matching the embedded language requirements. Betaflight-specific
+integration probes remain optional; the fork's own tests require no parent repo.
+See [the production transport contract](../src/lib/Df3/README.md) and
+[PROTOCOL.md](PROTOCOL.md) for the two separate wire formats.
 
 ## Timing model
 
@@ -123,10 +148,10 @@ At 420,000 baud a 26-byte RC frame takes 620 us. `Advance` drains only events du
 by the requested time; later events remain queued. Queues have bounded capacity
 and explicit backpressure rather than silently dropping bytes.
 
-This proof uses **pre-synchronized, RC-only radio slots** and telemetry denominator
-1. It intentionally does not apply the rate table's suggested telemetry ratio.
-For example, selecting the fork's custom 500 Hz DF rate uses its codec/rate/airtime,
-but does not reproduce that mode's normal 1:2 downlink schedule. Default 250 Hz has
+Configure starts with **pre-synchronized RC-only slots** and telemetry denominator
+1. EnableDownlink explicitly reserves 1:N slots. EnableUplink with payload `02`
+requires the production DF3 profile: rate index 10 (500 Hz), wide mode and 1:2
+telemetry. Merely selecting the rate does not enable either direction. Default 250 Hz has
 3,300 us airtime + 620 us UART serialization; 3,920 us is a modeled path delay,
 **not a measured end-to-end ELRS latency**.
 
@@ -142,8 +167,8 @@ values, not simulated radio measurements.
 - Binding, on-air sync acquisition/resynchronization, model-match negotiation,
   clock drift, scanning, dynamic power, actual receiver timeout/failsafe logic.
 - LoRa/FLRC waveforms, real RF, collisions, calibrated losses or SPI pin emulation.
-- A complete embedded bidirectional RF telemetry scheduler, including sync and
-  link-statistics slots. The optional experiment reserves data downlink slots.
+- A complete embedded bidirectional RF scheduler, including sync packets. The
+  optional uplink experiment includes data/link-statistics slots and real ACKs.
   `TelemetryIn` does exercise the real FC telemetry parser/queue, but returns the
   parsed payload to the coordinator; it does not transmit it back through the air.
 - TX handset UART decoding (TX input is already raw CRSF channel values).
@@ -158,8 +183,8 @@ Keep IPC framing separate from the UART bytes. A later coordinator can pass each
 simulation time, then advance its scheduler. Enable the actual CRSF receiver path
 in Betaflight SITL; do not convert these bytes back to the old direct channel-input
 path, which would bypass the parser. Ordinary TCP arrival time must not become the
-simulation clock. FC telemetry can travel back through `TelemetryIn`; a complete
-ELRS downlink scheduler remains future work.
+simulation clock. FC telemetry can travel back through `QueueTelemetry` and the modeled
+bidirectional link; a complete embedded scheduler remains future work.
 
 The process boundary is independent of the current host firmware loop, so a later
 port of the full ELRS application can replace that loop behind the same protocol.

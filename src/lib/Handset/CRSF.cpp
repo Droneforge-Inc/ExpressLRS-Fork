@@ -8,6 +8,7 @@ GENERIC_CRC8 crsf_crc(CRSF_CRC_POLY);
 
 uint8_t CRSF::MspData[ELRS_MSP_BUFFER] = {0};
 uint8_t CRSF::MspDataLength = 0;
+void (*CRSF::ReferenceHandler)(const uint8_t *, uint8_t) = nullptr;
 
 static const auto MSP_SERIAL_OUT_FIFO_SIZE = 256U;
 static FIFO<MSP_SERIAL_OUT_FIFO_SIZE> MspWriteFIFO;
@@ -133,13 +134,12 @@ void CRSF::ResetMspQueue()
 
 void CRSF::UnlockMspMessage()
 {
+    MspWriteFIFO.lock();
     // current msp message is sent so restore next buffered write
     if (MspWriteFIFO.size() > 0)
     {
-        MspWriteFIFO.lock();
         MspDataLength = MspWriteFIFO.pop();
         MspWriteFIFO.popBytes(MspData, MspDataLength);
-        MspWriteFIFO.unlock();
     }
     else
     {
@@ -147,6 +147,7 @@ void CRSF::UnlockMspMessage()
         MspDataLength = 0;
         memset(MspData, 0, ELRS_MSP_BUFFER);
     }
+    MspWriteFIFO.unlock();
 }
 
 void ICACHE_RAM_ATTR CRSF::AddMspMessage(mspPacket_t *packet, uint8_t destination)
@@ -185,6 +186,11 @@ void ICACHE_RAM_ATTR CRSF::AddMspMessage(mspPacket_t *packet, uint8_t destinatio
 
 void ICACHE_RAM_ATTR CRSF::AddMspMessage(const uint8_t length, uint8_t *data)
 {
+    if (length >= 3 && data[2] == CRSF_FRAMETYPE_DF_REFERENCE && ReferenceHandler)
+    {
+        ReferenceHandler(data, length);
+        return;
+    }
     if (length > ELRS_MSP_BUFFER)
     {
         return;

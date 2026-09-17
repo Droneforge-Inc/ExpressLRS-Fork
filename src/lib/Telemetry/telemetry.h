@@ -54,6 +54,7 @@ private:
     telemetry_state_s telemetry_state;
     uint8_t currentTelemetryByte;
     uint8_t prioritizedCount;
+    bool df3StreamDetected;
     bool callBootloader;
     bool callEnterBind;
     bool callUpdateModelMatch;

@@ -1,3 +1,4 @@
+#include "Df3ReferenceSession.h"
 #include "rxtx_common.h"
 #include "LowPassFilter.h"
 
@@ -923,6 +924,101 @@ void GotConnection(unsigned long now)
     DBGLN("got conn");
 }
 
+
+static dfstream::RxSession df3Session;
+static dfstream::Receiver df3Receiver;
+static FIFO<100> df3Packets;
+static volatile bool df3Active = false, df3AckEnabled = false;
+static volatile uint32_t df3LastRcUs = 0;
+static uint32_t df3LastReferenceUs = 0, df3LastHeartbeatUs = 0;
+static uint16_t df3LastSequence = 0;
+static bool df3Complete = false;
+static bool ICACHE_RAM_ATTR df3ProfileAllowed()
+{
+    return connectionState == connected && connectionHasModelMatch && teamraceHasModelMatch &&
+           !InBindingMode && !firmwareOptions.is_airport &&
+           (config.GetSerialProtocol() == PROTOCOL_CRSF || config.GetSerialProtocol() == PROTOCOL_INVERTED_CRSF) &&
+           !OtaIsFullRes && ExpressLRS_currAirRate_Modparams->index == dfstream::kRateIndex &&
+           OtaSwitchModeCurrent == smWideOr8ch && ExpressLRS_currTlmDenom == dfstream::kTelemetryRatio && !SwitchModePending;
+}
+static bool df3Control(const uint8_t *p, unsigned n)
+{
+    if (!dfstream::isControl(p, n))
+        return false;
+    const uint32_t now = micros();
+    const bool disarmed = df3LastRcUs && uint32_t(now - df3LastRcUs) < dfstream::kRcFreshnessUs && ChannelData[4] < CRSF_CHANNEL_VALUE_MID;
+    const uint32_t oldSession = df3Session.session;
+    const uint16_t oldEpoch = df3Session.epoch;
+    dfstream::Control reply;
+    if (df3Session.receive(p, n, now, df3ProfileAllowed(), !disarmed, reply))
+    {
+        if (oldSession != df3Session.session || oldEpoch != df3Session.epoch)
+        {
+            df3Active = false;
+            df3AckEnabled = false;
+            df3Receiver.reset(df3Session.session);
+            df3Packets.lock();
+            df3Packets.flush();
+            df3Packets.unlock();
+            df3Complete = false;
+            df3LastSequence = 0;
+            df3LastReferenceUs = now;
+        }
+        df3Active = df3Session.active;
+        telemetry.AppendTelemetryPackage(reply.data());
+    }
+    return true;
+}
+static void df3Service()
+{
+    const uint32_t now = micros();
+    const bool allowed = df3ProfileAllowed();
+    if (!allowed || (df3Active && uint32_t(now - df3LastReferenceUs) > dfstream::kReferenceTimeoutUs))
+    {
+        df3Active = false;
+        df3AckEnabled = false;
+        df3Session.reset();
+        df3Receiver.reset(0);
+        df3Complete = false;
+        df3Packets.lock();
+        df3Packets.flush();
+        df3Packets.unlock();
+    }
+    while (df3Active)
+    {
+        uint8_t packet[10];
+        bool have = false;
+        df3Packets.lock();
+        if (df3Packets.size() >= 10)
+        {
+            df3Packets.popBytes(packet, 10);
+            have = true;
+        }
+        df3Packets.unlock();
+        if (!have)
+            break;
+        const uint32_t at = dfstream::u32(packet + 6);
+        if (uint32_t(now - at) > dfstream::kFinishDeadlineUs)
+            continue;
+        dfstream::Frame frame;
+        if (df3Receiver.push(packet[0], packet + 1, at, frame) && dfstream::referenceEpoch(frame) == df3Session.epoch)
+        {
+            serialIO->queueMSPFrameTransmission(frame.data());
+            df3LastReferenceUs = now;
+            df3LastSequence = dfstream::referenceSequence(frame);
+            if (!df3Complete)
+                df3LastHeartbeatUs = now - dfstream::kHeartbeatPeriodUs;
+            df3Complete = true;
+        }
+    }
+    if (allowed && uint32_t(now - df3LastHeartbeatUs) >= dfstream::kHeartbeatPeriodUs)
+    {
+        auto hb = dfstream::heartbeat(df3Active ? df3Session.session : 0, df3Active ? df3Session.epoch : 0, df3LastSequence, df3Active && df3Complete);
+        telemetry.AppendTelemetryPackage(hb.data());
+        df3LastHeartbeatUs = now;
+    }
+}
+
 static void ICACHE_RAM_ATTR ProcessRfPacket_RC(OTA_Packet_s const * const otaPktPtr)
 {
     // Must be fully connected to process RC packets, prevents processing RC
@@ -931,6 +1027,8 @@ static void ICACHE_RAM_ATTR ProcessRfPacket_RC(OTA_Packet_s const * const otaPkt
         return;
 
     bool telemetryConfirmValue = OtaUnpackChannelData(otaPktPtr, ChannelData, ExpressLRS_currTlmDenom);
+    if (connectionHasModelMatch && teamraceHasModelMatch)
+        df3LastRcUs = micros();
     TelemetrySender.ConfirmCurrentPayload(telemetryConfirmValue);
 
     // No channels packets to the FC or PWM pins if no model match
@@ -973,6 +1071,37 @@ void ICACHE_RAM_ATTR OnELRSBindMSP(uint8_t* newUid4)
 
 static void ICACHE_RAM_ATTR ProcessRfPacket_MSP(OTA_Packet_s const * const otaPktPtr)
 {
+    // Consume marker before the legacy package-index mask. Decode/reassembly and
+    // UART queuing run on the main loop, not the ESP8285 radio interrupt.
+    if (!OtaIsFullRes && (otaPktPtr->std.msp_ul.packageIndex & dfstream::kStreamMarker))
+    {
+        if (df3Active && df3ProfileAllowed())
+        {
+            df3AckEnabled = true;
+            TelemetrySender.ConfirmCurrentPayload(otaPktPtr->std.msp_ul.tlmFlag);
+            // Header + five payload bytes + big-endian arrival timestamp.
+            uint8_t p[10];
+            p[0] = otaPktPtr->std.msp_ul.packageIndex;
+            for (unsigned i = 0; i < 5; ++i)
+                p[i + 1] = otaPktPtr->std.msp_ul.payload[i];
+            const uint32_t stamp = micros();
+            p[6] = stamp >> 24;
+            p[7] = stamp >> 16;
+            p[8] = stamp >> 8;
+            p[9] = stamp;
+#if defined(PLATFORM_ESP32)
+            df3Packets.lock();
+#endif
+            if (df3Packets.free() >= sizeof(p))
+                df3Packets.pushBytes(p, sizeof(p));
+#if defined(PLATFORM_ESP32)
+            df3Packets.unlock();
+#endif
+        }
+        return;
+    }
+    if (!OtaIsFullRes && df3AckEnabled && df3ProfileAllowed())
+        TelemetrySender.ConfirmCurrentPayload(otaPktPtr->std.msp_ul.tlmFlag);
     uint8_t packageIndex;
     uint8_t const * payload;
     uint8_t dataLen;
@@ -1238,6 +1367,11 @@ void SendMSPFrameToFC(uint8_t *mspData)
  **/
 void MspReceiveComplete()
 {
+    if (df3Control(MspData, MspData[1] + 2))
+    {
+        MspReceiver.Unlock();
+        return;
+    }
     switch (MspData[0])
     {
     case MSP_ELRS_SET_RX_WIFI_MODE: //0x0E
@@ -2185,6 +2319,7 @@ void loop()
         MspReceiveComplete();
     }
 
+    df3Service();
     devicesUpdate(now);
 
     // read and process any data from serial ports, send any queued non-RC data

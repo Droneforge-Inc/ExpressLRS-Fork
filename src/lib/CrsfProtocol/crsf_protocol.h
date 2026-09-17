@@ -54,6 +54,10 @@
 
 typedef enum : uint8_t
 {
+    CRSF_FRAMETYPE_DF_REFERENCE = 0xD5, // DF3 atomic trajectory reference, extended frame
+    CRSF_FRAMETYPE_DF_STATE = 0xD6, // DF3 source-timestamped state telemetry
+    CRSF_FRAMETYPE_DF_RAW_IMU = 0xD1, // Existing Droneforge sensor broadcast
+    CRSF_FRAMETYPE_DF_OPTRANGE = 0xD3, // Existing Droneforge sensor broadcast
     CRSF_FRAMETYPE_GPS = 0x02,
     CRSF_FRAMETYPE_VARIO = 0x07,
     CRSF_FRAMETYPE_BATTERY_SENSOR = 0x08,
@@ -93,7 +97,9 @@ typedef enum : uint8_t
     CRSF_FRAMETYPE_NIMBUS_VRX_TOP_CHANNELS = 0xE1,
     CRSF_FRAMETYPE_NIMBUS_LINK_STATE = 0xE2,
     CRSF_FRAMETYPE_NIMBUS_FC_UID = 0xE3,
-    CRSF_FRAMETYPE_NIMBUS_BIND_UID = 0xE4
+    CRSF_FRAMETYPE_NIMBUS_BIND_UID = 0xE4,
+    CRSF_FRAMETYPE_NIMBUS_REFERENCE_STATUS = 0xE5,
+    CRSF_FRAMETYPE_DF_REFERENCE_HEALTH = 0xD9
 } crsf_frame_type_e;
 
 typedef enum : uint8_t {
@@ -108,7 +114,8 @@ typedef enum : uint8_t {
     CRSF_COMMAND_NIMBUS_VRX_SCAN = 0x40,
     CRSF_COMMAND_NIMBUS_VRX_CONNECT = 0x41,
     CRSF_COMMAND_NIMBUS_SET_BIND_UID = 0x42,
-    CRSF_COMMAND_NIMBUS_VRX_SET_FREQUENCY = 0x43
+    CRSF_COMMAND_NIMBUS_VRX_SET_FREQUENCY = 0x43,
+    CRSF_COMMAND_NIMBUS_REFERENCE_TRANSPORT = 0x44
 } crsf_subcommand_e;
 
 enum {
