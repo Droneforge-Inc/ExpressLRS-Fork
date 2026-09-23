@@ -125,6 +125,8 @@ static bool df3IngressPending = false;
 static dfstream::Sender df3Sender;
 static dfstream::TxSession df3Session;
 static volatile bool df3Streaming = false;
+static volatile bool df3OwnControl = false;
+static uint32_t df3LastIngressUs = 0;
 
 static bool ICACHE_RAM_ATTR df3ProfileAllowed()
 {
@@ -158,11 +160,6 @@ static bool ICACHE_RAM_ATTR df3NextPacket(uint8_t &header, uint8_t *payload)
 }
 static void df3Service()
 {
-    const uint32_t now = micros();
-    const bool freshRc = handset && handset->GetRCdataLastRecv() && uint32_t(now - handset->GetRCdataLastRecv()) < dfstream::kRcFreshnessUs;
-    const bool armed = !freshRc || handset->IsArmed();
-    const bool allowed = df3ProfileAllowed() && freshRc;
-    df3Session.tick(now, allowed, armed);
     dfstream::Frame input;
     uint32_t at = 0;
     bool have = false;
@@ -175,12 +172,21 @@ static void df3Service()
         df3IngressPending = false;
     }
     df3IngressLock.unlock();
+    // The handset task can update both timestamps on the other core. Read
+    // them before their comparison clock, so a new arrival cannot wrap its age.
+    const uint32_t rcAt = handset ? handset->GetRCdataLastRecv() : 0;
+    const uint32_t now = micros();
+    const bool freshRc = rcAt && uint32_t(now - rcAt) < dfstream::kRcFreshnessUs;
+    const bool armed = !freshRc || handset->IsArmed();
+    const bool allowed = df3ProfileAllowed() && freshRc;
+    df3Session.tick(now, allowed, armed);
     if (have && uint32_t(now - at) <= dfstream::kStartDeadlineUs)
     {
+        df3LastIngressUs = at;
         const auto epoch = dfstream::referenceEpoch(input);
         if (df3Session.epoch && epoch != df3Session.epoch)
             df3Session.reset();
-        if (allowed && !armed && dfstream::referenceInactive(input) &&
+        if (allowed && !armed && !dfstream::referenceArmed(input) && dfstream::referenceInactive(input) &&
             (df3Session.state == dfstream::Disabled || df3Session.state == dfstream::Failed))
         {
 #if defined(PLATFORM_ESP32)
@@ -193,6 +199,17 @@ static void df3Service()
     }
     df3SenderLock.lock();
     df3Streaming = df3Session.state == dfstream::Streaming && allowed;
+    if (df3Streaming)
+        df3OwnControl = true;
+    // Returning to ordinary RC requires an explicit disarmed USB command and
+    // the end of the reference producer. A failed session must not fall back to
+    // cached armed channels while the SDK still thinks DF3 owns the aircraft.
+    if (df3OwnControl && freshRc && !armed && uint32_t(now - df3LastIngressUs) > dfstream::kRcFreshnessUs)
+    {
+        df3OwnControl = false;
+        df3Streaming = false;
+        df3Session.reset();
+    }
     if (!df3Streaming)
         df3Sender.reset(0);
     else
@@ -744,6 +761,14 @@ void ICACHE_RAM_ATTR SendRCdataToRF()
             if (syncTelemBoostState == stbIdle)
                 syncSpamCounter = 1;
             syncTelemBoostState = stbRequested;
+        }
+        else if (df3OwnControl && (df3Streaming || handset->IsArmed()))
+        {
+            // Empty streaming slots carry only a telemetry acknowledgement.
+            // They contain no control permission and cannot renew a reference.
+            otaPkt.std.type = PACKET_TYPE_MSPDATA;
+            otaPkt.std.msp_ul.packageIndex = dfstream::kStreamMarker | dfstream::kIdleFragment;
+            otaPkt.std.msp_ul.tlmFlag = TelemetryReceiver.GetCurrentConfirm();
         }
         else
         {

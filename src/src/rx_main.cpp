@@ -927,10 +927,13 @@ void GotConnection(unsigned long now)
 
 static dfstream::RxSession df3Session;
 static dfstream::Receiver df3Receiver;
+static dfstream::ReferenceControls df3Controls;
+static volatile bool df3ControlOwned = false, df3ControlReleased = false;
 static FIFO<100> df3Packets;
 static volatile bool df3Active = false, df3AckEnabled = false;
 static volatile uint32_t df3LastRcUs = 0;
-static uint32_t df3LastReferenceUs = 0, df3LastHeartbeatUs = 0;
+static uint32_t df3LastHeartbeatUs = 0;
+static uint32_t df3LastLocalControlUs = 0;
 static uint16_t df3LastSequence = 0;
 static bool df3Complete = false;
 static bool ICACHE_RAM_ATTR df3ProfileAllowed()
@@ -957,12 +960,13 @@ static bool df3Control(const uint8_t *p, unsigned n)
             df3Active = false;
             df3AckEnabled = false;
             df3Receiver.reset(df3Session.session);
+            df3Controls.reset();
+            df3ControlOwned = false;
             df3Packets.lock();
             df3Packets.flush();
             df3Packets.unlock();
             df3Complete = false;
             df3LastSequence = 0;
-            df3LastReferenceUs = now;
         }
         df3Active = df3Session.active;
         telemetry.AppendTelemetryPackage(reply.data());
@@ -971,14 +975,23 @@ static bool df3Control(const uint8_t *p, unsigned n)
 }
 static void df3Service()
 {
+    if (df3ControlReleased)
+    {
+        df3ControlReleased = false;
+        df3ControlOwned = false;
+        df3Controls.reset();
+        df3Session.reset();
+        df3Complete = false;
+    }
     const uint32_t now = micros();
     const bool allowed = df3ProfileAllowed();
-    if (!allowed || (df3Active && uint32_t(now - df3LastReferenceUs) > dfstream::kReferenceTimeoutUs))
+    if (!allowed)
     {
         df3Active = false;
         df3AckEnabled = false;
         df3Session.reset();
         df3Receiver.reset(0);
+        df3Controls.reset();
         df3Complete = false;
         df3Packets.lock();
         df3Packets.flush();
@@ -998,22 +1011,46 @@ static void df3Service()
         if (!have)
             break;
         const uint32_t at = dfstream::u32(packet + 6);
-        if (uint32_t(now - at) > dfstream::kFinishDeadlineUs)
+        if (uint32_t(micros() - at) > dfstream::kFinishDeadlineUs)
             continue;
         dfstream::Frame frame;
-        if (df3Receiver.push(packet[0], packet + 1, at, frame) && dfstream::referenceEpoch(frame) == df3Session.epoch)
+        // Preserve arrival-time ordering, but accept permissions and forward
+        // references only while their source/receipt lease is fresh now.
+        if (df3Receiver.push(packet[0], packet + 1, at, frame) && dfstream::referenceEpoch(frame) == df3Session.epoch &&
+            df3Controls.accept(frame, at, micros()))
         {
-            serialIO->queueMSPFrameTransmission(frame.data());
-            df3LastReferenceUs = now;
+            auto fcFrame = dfstream::flightControllerFrame(frame);
+            serialIO->queueMSPFrameTransmission(fcFrame.data());
+            df3Packets.lock();
+            if (df3Active && !df3ControlReleased)
+                df3ControlOwned = true;
+            df3Packets.unlock();
             df3LastSequence = dfstream::referenceSequence(frame);
+            df3LastLocalControlUs = now - dfstream::kLocalControlPeriodUs;
             if (!df3Complete)
                 df3LastHeartbeatUs = now - dfstream::kHeartbeatPeriodUs;
             df3Complete = true;
         }
     }
+    const uint32_t controlNow = micros();
+    // Keep receiver channels alive on reference loss so the FC can execute its
+    // own hold/descent. Radio/profile loss above still ends this session.
+    bool localControl = false;
+    // Share the ISR handoff lock with native RC ownership changes. A disarm
+    // interrupt cannot be overwritten halfway through a local channel update.
+    df3Packets.lock();
+    if (df3Active && allowed && uint32_t(controlNow - df3LastLocalControlUs) >= dfstream::kLocalControlPeriodUs &&
+        df3Controls.channels(controlNow, ChannelData))
+    {
+        df3LastLocalControlUs = controlNow;
+        localControl = true;
+    }
+    df3Packets.unlock();
+    if (localControl)
+        crsfRCFrameAvailable();
     if (allowed && uint32_t(now - df3LastHeartbeatUs) >= dfstream::kHeartbeatPeriodUs)
     {
-        auto hb = dfstream::heartbeat(df3Active ? df3Session.session : 0, df3Active ? df3Session.epoch : 0, df3LastSequence, df3Active && df3Complete);
+        auto hb = dfstream::heartbeat(df3Active ? df3Session.session : 0, df3Active ? df3Session.epoch : 0, df3LastSequence, df3Active && df3Controls.fresh(controlNow));
         telemetry.AppendTelemetryPackage(hb.data());
         df3LastHeartbeatUs = now;
     }
@@ -1026,7 +1063,31 @@ static void ICACHE_RAM_ATTR ProcessRfPacket_RC(OTA_Packet_s const * const otaPkt
     if (connectionState != connected || SwitchModePending)
         return;
 
-    bool telemetryConfirmValue = OtaUnpackChannelData(otaPktPtr, ChannelData, ExpressLRS_currTlmDenom);
+    #if defined(PLATFORM_ESP32)
+    df3Packets.lock();
+    #endif
+    uint32_t channels[16];
+    std::copy_n(ChannelData, 16, channels);
+    bool telemetryConfirmValue = OtaUnpackChannelData(otaPktPtr, channels, ExpressLRS_currTlmDenom);
+    // Only a disarmed native command may take ownership back from DF3. This
+    // also lets an explicit disarm recover a failed reference session.
+    if (df3ControlOwned && channels[4] >= CRSF_CHANNEL_VALUE_MID)
+    {
+        #if defined(PLATFORM_ESP32)
+        df3Packets.unlock();
+        #endif
+        return;
+    }
+    std::copy_n(channels, 16, ChannelData);
+    if (df3ControlOwned)
+    {
+        df3Active = false;
+        df3ControlOwned = false;
+        df3ControlReleased = true;
+    }
+    #if defined(PLATFORM_ESP32)
+    df3Packets.unlock();
+    #endif
     if (connectionHasModelMatch && teamraceHasModelMatch)
         df3LastRcUs = micros();
     TelemetrySender.ConfirmCurrentPayload(telemetryConfirmValue);
@@ -1075,10 +1136,14 @@ static void ICACHE_RAM_ATTR ProcessRfPacket_MSP(OTA_Packet_s const * const otaPk
     // UART queuing run on the main loop, not the ESP8285 radio interrupt.
     if (!OtaIsFullRes && (otaPktPtr->std.msp_ul.packageIndex & dfstream::kStreamMarker))
     {
-        if (df3Active && df3ProfileAllowed())
+        if (df3ProfileAllowed())
         {
+            // ACKs must survive a session reset so its failure heartbeat can
+            // reach TX. They carry no arm permission and renew no lease.
             df3AckEnabled = true;
             TelemetrySender.ConfirmCurrentPayload(otaPktPtr->std.msp_ul.tlmFlag);
+            if (!df3Active || (otaPktPtr->std.msp_ul.packageIndex & 15) == dfstream::kIdleFragment)
+                return;
             // Header + five payload bytes + big-endian arrival timestamp.
             uint8_t p[10];
             p[0] = otaPktPtr->std.msp_ul.packageIndex;

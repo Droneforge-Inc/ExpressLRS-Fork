@@ -6,8 +6,10 @@
 #include <cstring>
 namespace dfstream
 {
-// Fixed v2 radio profile. These are protocol constants, not tuning options.
-constexpr uint8_t kTransportVersion = 2;
+// Fixed v3 radio profile. All piloting permissions share the reference's CRC,
+// sequence and lease; no independent RC packets consume streaming uplink slots.
+constexpr uint8_t kTransportVersion = 3;
+constexpr uint8_t kReferenceVersion = 2;
 constexpr uint8_t kRateIndex = 10; // This fork's 500 Hz DF rate table entry.
 constexpr uint8_t kSwitchMode = 0; // Wide / 8-channel mode.
 constexpr uint8_t kTelemetryRatio = 2;
@@ -18,11 +20,26 @@ constexpr uint8_t kFragmentCount = kDataFragments + kParityFragments;
 constexpr uint8_t kStreamMarker = 0x40;
 constexpr uint8_t kTelemetryAck = 0x80;
 constexpr uint16_t kTagMask = 0x3ff;
-constexpr uint32_t kPeriodUs = 100000;
+constexpr uint32_t kPeriodUs = 50000;
 constexpr uint32_t kStartDeadlineUs = 12000;
 constexpr uint32_t kFinishDeadlineUs = 80000;
 using Frame = std::array<uint8_t, 38>;
 using Block = std::array<uint8_t, kDataFragments * kFragmentBytes>;
+enum ControlFlags : uint8_t
+{
+    Inactive = 1, Armed = 2, Assist = 4,
+    CalibrateGyro = 8, CalibrateAccel = 16, CalibrateInflight = 32
+};
+inline bool validFlags(uint8_t flags)
+{
+    const bool calibration = flags & (CalibrateGyro | CalibrateAccel);
+    return !(flags & 0xc0) &&
+           ((flags & Inactive) || (flags & (Armed | Assist)) == (Armed | Assist)) &&
+           (!(flags & Assist) || (flags & Armed)) &&
+           (!(flags & CalibrateInflight) || (flags & Armed)) &&
+           (!calibration || ((flags & Inactive) && !(flags & (Armed | Assist | CalibrateInflight)) &&
+                            (flags & (CalibrateGyro | CalibrateAccel)) != (CalibrateGyro | CalibrateAccel)));
+}
 inline uint16_t u16(const uint8_t *p)
 {
     return uint16_t(p[0]) << 8 | p[1];
@@ -38,8 +55,9 @@ inline uint16_t referenceSequence(const Frame &f)
 }
 inline bool referenceInactive(const Frame &f)
 {
-    return f[6] == 1;
+    return f[6] & Inactive;
 }
+inline bool referenceArmed(const Frame &f) { return f[6] & Armed; }
 inline uint8_t crc8(const uint8_t *p, unsigned n)
 {
     uint8_t c = 0;
@@ -70,14 +88,14 @@ inline uint16_t blockCrc(const Block &b, uint32_t session)
 inline bool valid(const Frame &f)
 {
     return (f[0] == 0xee || f[0] == 0xc8) && f[1] == 36 && f[2] == 0xd5 && f[3] == 0xc8 && f[4] == 0xea &&
-           f[5] == 1 && f[6] <= 1 && u16(&f[7]) != 0 && u16(&f[35]) >= 50 && u16(&f[35]) <= 250 &&
+           f[5] == kReferenceVersion && validFlags(f[6]) && u16(&f[7]) != 0 && u16(&f[35]) >= 50 && u16(&f[35]) <= 250 &&
            f.back() == crc8(&f[2], 35);
 }
 inline bool pack(const Frame &f, uint32_t session, Block &b)
 {
     if (!session || !valid(f))
         return false;
-    b[0] = uint8_t(0x20 | f[6]);     // transport version 2; original active/inactive flag
+    b[0] = f[6];                   // version is negotiated by the CRC-bound session
     std::copy_n(&f[7], 8, &b[1]);    // epoch16, sequence16, source32 unchanged
     b[9] = f[36];                  // valid lease 50..250 fits one byte
     std::copy_n(&f[15], 20, &b[10]); // p/v/a/yaw unchanged signed 16-bit integers
@@ -88,7 +106,7 @@ inline bool pack(const Frame &f, uint32_t session, Block &b)
 }
 inline bool unpack(const Block &b, uint32_t session, Frame &f)
 {
-    if (!session || (b[0] != 0x20 && b[0] != 0x21) || u16(&b[1]) == 0 || b[9] < 50 || b[9] > 250 ||
+    if (!session || !validFlags(b[0]) || u16(&b[1]) == 0 || b[9] < 50 || b[9] > 250 ||
         u16(&b[30]) != blockCrc(b, session))
         return false;
     f = {};
@@ -97,14 +115,23 @@ inline bool unpack(const Block &b, uint32_t session, Frame &f)
     f[2] = 0xd5;
     f[3] = 0xc8;
     f[4] = 0xea;
-    f[5] = 1;
-    f[6] = b[0] & 1;
+    f[5] = kReferenceVersion;
+    f[6] = b[0];
     std::copy_n(&b[1], 8, &f[7]);
     std::copy_n(&b[10], 20, &f[15]);
     f[35] = 0;
     f[36] = b[9];
     f[37] = crc8(&f[2], 35);
     return true;
+}
+// The FC retains its v1 trajectory contract. Control flags become local UART
+// channels only after the receiver has validated the complete reference.
+inline Frame flightControllerFrame(Frame f)
+{
+    f[5] = 1;
+    f[6] &= Inactive;
+    f[37] = crc8(&f[2], 35);
+    return f;
 }
 struct Sender
 {
@@ -115,7 +142,7 @@ struct Sender
     uint32_t pendingAt = 0, activeAt = 0, nextStart = 0;
     uint16_t lastEpoch = 0, lastSequence = 0, tag = 0;
     uint8_t index = 0;
-    bool havePending = false, haveActive = false, haveLast = false, urgent = false, lastInactive = false, haveStart = false;
+    bool havePending = false, haveActive = false, haveLast = false, urgent = false, lastInactive = false, lastArmed = false, haveStart = false;
     void reset(uint32_t s)
     {
         *this = Sender{};
@@ -138,7 +165,7 @@ struct Sender
             return false;
         // Preempt on transition to inactive, not every preflight sample. A fast
         // inactive producer must not repeatedly abort the snapshot before completion.
-        urgent = urgent || (referenceInactive(f) && !lastInactive);
+        urgent = urgent || (referenceInactive(f) && !lastInactive) || (!referenceArmed(f) && lastArmed);
         if (urgent)
         {
             haveActive = false;
@@ -154,6 +181,7 @@ struct Sender
         lastEpoch = epoch;
         lastSequence = seq;
         lastInactive = referenceInactive(f);
+        lastArmed = referenceArmed(f);
         return true;
     }
     bool next(uint32_t now, bool ack, uint8_t &header, uint8_t payload[5])

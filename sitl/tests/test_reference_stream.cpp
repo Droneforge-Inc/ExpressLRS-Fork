@@ -32,8 +32,8 @@ Frame frame(uint16_t seq, uint32_t stamp, bool inactive = false)
     f[2] = 0xd5;
     f[3] = 0xc8;
     f[4] = 0xea;
-    f[5] = 1;
-    f[6] = inactive;
+    f[5] = kReferenceVersion;
+    f[6] = inactive ? Inactive : Armed | Assist;
     put16(f, 7, 7);
     put16(f, 9, seq);
     f[11] = stamp >> 24;

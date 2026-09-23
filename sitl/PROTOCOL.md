@@ -54,9 +54,9 @@ No reconnect-and-resume is attempted: a fresh process has fresh protocol state.
 | 8 | EnableDownlink | Optional uint8 denominator N (empty = 2), once after Configure at time zero | Empty; N in 2/4/8/16/32/64/128; 8-byte OTA only |
 | 9 | QueueTelemetry (RX) | Complete CRC-valid CRSF frame | Empty; feeds production telemetry queue without draining it |
 | 10 | TransmitTelemetry (RX) | Empty, reserved RF slot time | OTA envelope, or empty if no queued message |
-| 11 | ReceiveTelemetry (TX) | OTA envelope from RX | Acceptance byte followed by a complete CRSF frame if reassembly finished; DF3 session/health frames are consumed internally in v2 mode |
-| 12 | EnableUplink | Empty for historical reliable-D5 comparison, or one byte `02` for production DF3 v2 | Empty; once after EnableDownlink at time zero, before slots |
-| 13 | QueueUplink (TX) | Complete CRC-valid extended CRSF frame addressed to FC or RX | Empty; D5 additionally requires a valid reference payload in v2 mode |
+| 11 | ReceiveTelemetry (TX) | OTA envelope from RX | Acceptance byte followed by a complete CRSF frame if reassembly finished; DF3 session/health frames are consumed internally in v3 mode |
+| 12 | EnableUplink | Empty for historical reliable-D5 comparison, or one byte `03` for production DF3 v3 | Empty; once after EnableDownlink at time zero, before slots |
+| 13 | QueueUplink (TX) | Complete CRC-valid extended CRSF frame addressed to FC or RX | Empty; D5 additionally requires a valid reference payload in v3 mode |
 | 14 | ReferenceStatus | Empty | State u8, complete/ready u8, session u32, epoch u16; TX appends the 15-byte production E5 CRSF status frame |
 | 15 | ReferenceReset | Empty | Empty; resets the reference session and pending reference state only |
 
@@ -115,12 +115,17 @@ and the complete embedded slot scheduler remain outside this model.
 
 ## Reference uplink and lifecycle
 
-V2 requires rate index 10, switch mode 0 (wide), 8-byte OTA and telemetry denominator
-2 on both peers. Every other uplink opportunity remains RC. Reference snapshots
+V3 requires rate index 10, switch mode 0 (wide), 8-byte OTA and telemetry denominator
+2 on both peers. Every uplink opportunity may carry a reference fragment. Native
+RF RC stops while DF3 owns control. Reference snapshots
 use production DF3 fragmentation/parity; management messages and session commands
 use StubbornSender. Reference fragments also carry the downlink ACK bit. The RX
-consumes session commands locally and forwards completed D5 frames as ordinary
-CRSF UART bytes. A legacy peer does not negotiate v2 and receives no marked stream.
+consumes session commands locally, converts completed SDK D5 v2 frames to FC v1
+and emits arm/assist/calibration channels over local CRSF UART. Reference expiry
+retains arm/assist while ending calibration gestures; session loss clears all
+permissions. Index 15 is an ACK-only idle packet and never renews reference
+freshness or changes permissions. A legacy peer does not
+negotiate v3 and receives no marked stream.
 
 Empty EnableUplink selects an explicitly historical comparison fixture: latest
 waiting D5 references share the reliable uplink with ordered management messages.
@@ -129,12 +134,12 @@ without altering the previously selected mode. Malformed QueueUplink requests do
 not replace pending references or advance virtual time.
 
 ReferenceStatus reports TX state 0=disabled, 1=negotiating, 2=streaming, 3=failed;
-its second byte indicates readiness (matching RX heartbeat with a completed
-reference). RX reports active-session and completed-reference booleans instead.
+its second byte indicates readiness (matching RX heartbeat with a fresh completed
+reference). RX reports active-session and fresh-reference booleans instead.
 Status reads do not advance time. ReferenceReset advances time and clears the
-session, assembly/sender, pending ingress and reference-health bookkeeping. It
+session, permissions, assembly/sender, pending ingress and reference-health bookkeeping. It
 preserves configuration, RF slot history, reliable management/telemetry queues,
 UART events and the selected uplink mode. Use a fresh process for a full reboot.
 
 The IPC version remains 1; these are additive operations. The DF3 radio transport
-version is separately 2. See [the production transport contract](../src/lib/Df3/README.md).
+version is separately 3. See [the production transport contract](../src/lib/Df3/README.md).

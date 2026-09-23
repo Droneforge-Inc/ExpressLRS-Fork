@@ -12,9 +12,10 @@ constexpr uint32_t kNegotiationTimeoutUs = 2000000;
 constexpr uint32_t kControlRetryUs = 250000;
 constexpr uint32_t kHeartbeatTimeoutUs = 2500000;
 constexpr uint32_t kHeartbeatPeriodUs = 1000000;
-constexpr uint32_t kReferenceTimeoutUs = 1000000;
 constexpr uint32_t kRcFreshnessUs = 250000;
 constexpr uint32_t kLocalStatusPeriodUs = 250000;
+constexpr uint32_t kLocalControlPeriodUs = 20000;
+constexpr uint8_t kIdleFragment = 15;
 enum Operation : uint8_t
 {
     Hello = 1,
@@ -83,6 +84,75 @@ inline Heartbeat heartbeat(uint32_t session, uint16_t epoch, uint16_t sequence, 
     f[13] = crc8(&f[2], 11);
     return f;
 }
+// References expire independently of the FC's receiver channels, so DF3 can
+// hold/descend on reference loss. The caller must reset on radio/session loss;
+// a new session needs a fresh disarm before it may arm. UART repeats never renew
+// a reference's source/receipt lease or extend calibration gestures.
+struct ReferenceControls
+{
+    uint32_t received = 0, source = 0, sourceLocal = 0, lease = 0;
+    uint16_t sequence = 0, epoch = 0;
+    uint8_t flags = Inactive;
+    bool have = false, blocked = true;
+    void reset() { *this = ReferenceControls{}; }
+    bool fresh(uint32_t now) const
+    {
+        return have && !blocked && uint32_t(now - received) <= lease && uint32_t(now - sourceLocal) <= lease;
+    }
+    bool accept(const Frame &f, uint32_t at, uint32_t now)
+    {
+        if (!valid(f))
+            return false;
+        const uint16_t seq = referenceSequence(f), e = referenceEpoch(f);
+        const uint32_t stamp = u32(&f[11]);
+        uint32_t mapped = at;
+        if (have)
+        {
+            const uint16_t delta = uint16_t(seq - sequence);
+            const uint32_t dt = stamp - source;
+            if (e != epoch || !delta || delta >= 32768 || !dt || dt >= 0x80000000U ||
+                uint64_t(dt) * 1000 > uint64_t(uint32_t(at - received)) + 250000)
+                return false;
+            mapped = sourceLocal + dt * 1000;
+            if (int32_t(mapped - at) > 0)
+                mapped = at;
+        }
+        const uint32_t ttl = uint32_t(u16(&f[35])) * 1000;
+        // Validate at service time before changing permissions: a queued arm
+        // or calibration command must not take effect after its lease expired.
+        if (uint32_t(now - at) > ttl || uint32_t(now - mapped) > ttl)
+            return false;
+        have = true;
+        received = at;
+        source = stamp;
+        sourceLocal = mapped;
+        lease = ttl;
+        sequence = seq;
+        epoch = e;
+        flags = f[6];
+        if (!(flags & Armed))
+            blocked = false;
+        return !blocked;
+    }
+    bool channels(uint32_t now, uint32_t out[16])
+    {
+        if (!have || blocked)
+            return false;
+        const uint8_t permissions = fresh(now) ? flags : flags & (Inactive | Armed | Assist);
+        std::fill_n(out, 16, 992);
+        out[2] = (permissions & Inactive) ? 172 : 350;
+        out[4] = (permissions & Armed) ? 1800 : 172;
+        out[5] = 172; // Nimbus ANGLE mode; no stick piloting in DF3.
+        out[6] = (permissions & Assist) ? 1800 : 172;
+        out[8] = (permissions & CalibrateInflight) ? 1800 : 172;
+        if (permissions & (CalibrateGyro | CalibrateAccel))
+        {
+            out[1] = out[3] = 172;
+            out[2] = (permissions & CalibrateAccel) ? 1800 : 172;
+        }
+        return true;
+    }
+};
 struct TxSession
 {
     State state = Disabled;
@@ -209,10 +279,10 @@ struct RxSession
         return true;
     }
 };
-// At the fixed 1:2 profile, nonce 3 (then 7,11,...) is a data opportunity.
-// Reserve every other uplink for RC, even while management data is pending.
+// At 1:2, every odd nonce is an uplink. Piloting permissions now travel inside
+// complete references; normal RC remains available before/after DF3 ownership.
 inline bool dataSlot(uint8_t nonce)
 {
-    return (nonce & 3) == 3;
+    return (nonce & 1) == 1;
 }
 } // namespace dfstream

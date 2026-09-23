@@ -112,17 +112,21 @@ under `sitl/`; the host does not compile a fake copy of the ELRS codec.
 
 ## DF3 and comparison tests
 
-EnableUplink follows EnableDownlink, before any slots. Payload `02` selects the
-production v2 reference stream; empty payload retains the **historical reliable-D5
+EnableUplink follows EnableDownlink, before any slots. Payload `03` selects the
+production v3 reference stream; empty payload retains the **historical reliable-D5
 comparison** implemented only in `tests/fixtures/LegacyReferenceQueue.h`. Firmware
 builds never include that fixture. Management traffic uses the production CRSF
 queue and StubbornSender in both modes.
 
 DF3 negotiates while disarmed, sends bounded latest-only snapshots with one parity
-fragment, and retains RC opportunities while data is pending. Tests cover an old
+fragment at 20 Hz. Arm/assist/calibration permissions travel with the reference;
+RX generates the FC channel frames locally and retains arm/assist during reference
+gaps, allowing the FC's reference-loss fallback. Calibration gestures still expire.
+RF RC is absent while DF3 owns control. Tests cover an old
 RX, one-sided reference-session reset, SDK epoch changes, malformed ingress,
-rejected mode changes, and stale references. `ReferenceReset` resets only the
-reference session, not the full radio/CRSF state; restart a process to model that.
+rejected mode changes, stale references and armed recovery after long reference
+gaps. `ReferenceReset` clears the reference session and its permissions, not the
+full radio/CRSF state; restart a process to model that.
 
 CTest also runs standalone session, fragment-loss/parity, local-link snapshot,
 and telemetry-queue tests. Assertions remain active in optimized builds, and
@@ -149,7 +153,7 @@ by the requested time; later events remain queued. Queues have bounded capacity
 and explicit backpressure rather than silently dropping bytes.
 
 Configure starts with **pre-synchronized RC-only slots** and telemetry denominator
-1. EnableDownlink explicitly reserves 1:N slots. EnableUplink with payload `02`
+1. EnableDownlink explicitly reserves 1:N slots. EnableUplink with payload `03`
 requires the production DF3 profile: rate index 10 (500 Hz), wide mode and 1:2
 telemetry. Merely selecting the rate does not enable either direction. Default 250 Hz has
 3,300 us airtime + 620 us UART serialization; 3,920 us is a modeled path delay,

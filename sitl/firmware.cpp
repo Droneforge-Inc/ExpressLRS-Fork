@@ -27,10 +27,14 @@ static dfstream::Frame streamPending;
 static uint32_t streamPendingAt = 0;
 static bool streamHavePending = false;
 static uint32_t streamNonce = 0xdf330000;
+static bool streamOwnControl = false;
+static uint32_t streamLastIngress = 0;
 #else
 static dfstream::Receiver streamReceiver;
 static dfstream::RxSession streamSession;
-static uint32_t streamLastReference = 0, streamLastHeartbeat = 0;
+static dfstream::ReferenceControls streamControls;
+static uint32_t streamLocalControlAt = 0;
+static uint32_t streamLastHeartbeat = 0;
 static bool streamAckEnabled = false;
 static bool streamComplete = false;
 static uint16_t streamSequence = 0;
@@ -192,7 +196,7 @@ Bytes Firmware::handle(uint16_t op, uint64_t time, const Bytes &payload)
         out.insert(out.end(), status.begin(), status.end());
 #else
         put(out, streamSession.active, 1);
-        put(out, streamComplete, 1);
+        put(out, streamSession.active && streamControls.fresh(uint32_t(time)), 1);
         put(out, streamSession.session, 4);
         put(out, streamSession.epoch, 2);
 #endif
@@ -207,10 +211,10 @@ Bytes Firmware::handle(uint16_t op, uint64_t time, const Bytes &payload)
         streamHavePending = false;
 #else
         streamReceiver.reset(0);
+        streamControls.reset();
         streamComplete = false;
         streamAckEnabled = false;
         streamSequence = 0;
-        streamLastReference = time;
         streamLastHeartbeat = uint32_t(time) - dfstream::kHeartbeatPeriodUs;
 #endif
         now = sitl_time_us = time;
@@ -258,7 +262,7 @@ Bytes Firmware::handle(uint16_t op, uint64_t time, const Bytes &payload)
         if (time != 0 || haveSlot || !downlink || uplink)
             throw std::runtime_error("enable uplink once after downlink, before slots");
         if (version && (ExpressLRS_currAirRate_Modparams->index != dfstream::kRateIndex || ExpressLRS_currTlmDenom != dfstream::kTelemetryRatio || OtaSwitchModeCurrent != smWideOr8ch))
-            throw std::runtime_error("reference v2 requires rate 10, ratio 2, wide mode");
+            throw std::runtime_error("reference v3 requires rate 10, ratio 2, wide mode");
         streamEnabled = version != 0;
 #if TARGET_TX
         CRSF::ReferenceHandler = [](const uint8_t *p, uint8_t n) {
@@ -336,10 +340,11 @@ Bytes Firmware::handle(uint16_t op, uint64_t time, const Bytes &payload)
             streamSession.tick(uint32_t(time), true, armed);
             if (streamHavePending)
             {
+                streamLastIngress = streamPendingAt;
                 const auto epoch = dfstream::referenceEpoch(streamPending);
                 if (streamSession.epoch && epoch != streamSession.epoch)
                     streamSession.reset();
-                if (!armed && dfstream::referenceInactive(streamPending) && (streamSession.state == dfstream::Disabled || streamSession.state == dfstream::Failed))
+                if (!armed && !dfstream::referenceArmed(streamPending) && dfstream::referenceInactive(streamPending) && (streamSession.state == dfstream::Disabled || streamSession.state == dfstream::Failed))
                     streamSession.begin(++streamNonce, epoch, uint32_t(time));
             }
             if (streamSession.state != dfstream::Streaming)
@@ -350,6 +355,13 @@ Bytes Firmware::handle(uint16_t op, uint64_t time, const Bytes &payload)
                     streamSender.reset(streamSession.session);
                 if (streamHavePending && dfstream::referenceEpoch(streamPending) == streamSession.epoch)
                     streamSender.offer(streamPending, streamPendingAt);
+                streamOwnControl = true;
+            }
+            if (streamOwnControl && !armed && uint32_t(time - streamLastIngress) > dfstream::kRcFreshnessUs)
+            {
+                streamOwnControl = false;
+                streamSession.reset();
+                streamSender.reset(0);
             }
             streamHavePending = false;
             uint8_t *queued = nullptr, length = 0;
@@ -392,6 +404,12 @@ Bytes Firmware::handle(uint16_t op, uint64_t time, const Bytes &payload)
             if (streaming)
                 packet.std.msp_ul.tlmFlag = telemetryReceiver.GetCurrentConfirm();
             nextMsp = false;
+        }
+        else if (streamOwnControl && (streaming || channels[4] >= CRSF_CHANNEL_VALUE_MID))
+        {
+            packet.std.type = PACKET_TYPE_MSPDATA;
+            packet.std.msp_ul.packageIndex = dfstream::kStreamMarker | dfstream::kIdleFragment;
+            packet.std.msp_ul.tlmFlag = telemetryReceiver.GetCurrentConfirm();
         }
         else
         {
@@ -488,22 +506,37 @@ Bytes Firmware::handle(uint16_t op, uint64_t time, const Bytes &payload)
             serial.bytes.clear();
             if (packet.std.type == PACKET_TYPE_RCDATA)
             {
-                bool confirm = OtaUnpackChannelData(&packet, ChannelData, ExpressLRS_currTlmDenom);
+                uint32_t channels[16];
+                std::copy_n(ChannelData, 16, channels);
+                bool confirm = OtaUnpackChannelData(&packet, channels, ExpressLRS_currTlmDenom);
                 if (downlink)
                     telemetrySender.ConfirmCurrentPayload(confirm);
-                crsf.sendRCFrame(true, false, ChannelData);
+                if (!streamControls.have || channels[4] < CRSF_CHANNEL_VALUE_MID)
+                {
+                    if (streamControls.have)
+                    {
+                        streamControls.reset();
+                        streamSession.reset();
+                        streamComplete = false;
+                    }
+                    std::copy_n(channels, 16, ChannelData);
+                    crsf.sendRCFrame(true, false, ChannelData);
+                }
             }
             else if (streamEnabled && (packet.std.msp_ul.packageIndex & dfstream::kStreamMarker))
             {
+                streamAckEnabled = true;
+                telemetrySender.ConfirmCurrentPayload(packet.std.msp_ul.tlmFlag);
                 if (streamSession.active)
                 {
-                    streamAckEnabled = true;
-                    telemetrySender.ConfirmCurrentPayload(packet.std.msp_ul.tlmFlag);
                     dfstream::Frame f;
-                    if (streamReceiver.push(packet.std.msp_ul.packageIndex, packet.std.msp_ul.payload, uint32_t(time), f) && dfstream::referenceEpoch(f) == streamSession.epoch)
+                    if ((packet.std.msp_ul.packageIndex & 15) != dfstream::kIdleFragment &&
+                        streamReceiver.push(packet.std.msp_ul.packageIndex, packet.std.msp_ul.payload, uint32_t(time), f) &&
+                        dfstream::referenceEpoch(f) == streamSession.epoch && streamControls.accept(f, uint32_t(time), uint32_t(time)))
                     {
-                        crsf.queueMSPFrameTransmission(f.data());
-                        streamLastReference = time;
+                        auto fcFrame = dfstream::flightControllerFrame(f);
+                        crsf.queueMSPFrameTransmission(fcFrame.data());
+                        streamLocalControlAt = uint32_t(time) - dfstream::kLocalControlPeriodUs;
                         streamSequence = dfstream::referenceSequence(f);
                         if (!streamComplete)
                             streamLastHeartbeat = uint32_t(time) - dfstream::kHeartbeatPeriodUs;
@@ -536,10 +569,10 @@ Bytes Firmware::handle(uint16_t op, uint64_t time, const Bytes &payload)
                             if (old != streamSession.session || oldEpoch != streamSession.epoch)
                             {
                                 streamReceiver.reset(streamSession.session);
+                                streamControls.reset();
                                 streamComplete = false;
                                 streamAckEnabled = false;
                                 streamSequence = 0;
-                                streamLastReference = time;
                             }
                             telemetry.AppendTelemetryPackage(reply.data());
                         }
@@ -559,6 +592,16 @@ Bytes Firmware::handle(uint16_t op, uint64_t time, const Bytes &payload)
     {
         r.end();
         now = sitl_time_us = time;
+#if TARGET_RX
+        if (streamSession.active && uint32_t(time - streamLocalControlAt) >= dfstream::kLocalControlPeriodUs &&
+            streamControls.channels(uint32_t(time), ChannelData))
+        {
+            serial.bytes.clear();
+            streamLocalControlAt = uint32_t(time);
+            crsf.sendRCFrame(true, false, ChannelData);
+            serialize(serial.bytes);
+        }
+#endif
         return drain();
     }
     if (op == TransmitTelemetry)
@@ -574,17 +617,9 @@ Bytes Firmware::handle(uint16_t op, uint64_t time, const Bytes &payload)
             throw std::runtime_error("duplicate telemetry slot");
         if (streamEnabled)
         {
-            if (streamSession.active && uint32_t(time - streamLastReference) > dfstream::kReferenceTimeoutUs)
-            {
-                streamSession.reset();
-                streamReceiver.reset(0);
-                streamComplete = false;
-                streamAckEnabled = false;
-                streamSequence = 0;
-            }
             if (uint32_t(time - streamLastHeartbeat) >= dfstream::kHeartbeatPeriodUs)
             {
-                auto hb = dfstream::heartbeat(streamSession.active ? streamSession.session : 0, streamSession.active ? streamSession.epoch : 0, streamSequence, streamSession.active && streamComplete);
+                auto hb = dfstream::heartbeat(streamSession.active ? streamSession.session : 0, streamSession.active ? streamSession.epoch : 0, streamSequence, streamSession.active && streamControls.fresh(uint32_t(time)));
                 telemetry.AppendTelemetryPackage(hb.data());
                 streamLastHeartbeat = time;
             }
